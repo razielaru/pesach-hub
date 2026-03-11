@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import Modal, { ModalButtons } from '../components/ui/Modal'
-import KpiCard from '../components/ui/KpiCard'
+import Modal, { ModalButtons } from '../components/UI/Modal'
+import KpiCard from '../components/UI/KpiCard'
 
 const STATUS_LABEL = { available:'זמין', zoom:'זום', away:'הגב', leave:'שחרור' }
 const STATUS_CLS   = { available:'badge-green', zoom:'badge-blue', away:'badge-orange', leave:'badge-red' }
