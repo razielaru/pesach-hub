@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import Modal, { ModalButtons } from '../components/UI/Modal'
-import KpiCard from '../components/UI/KpiCard'
+import Modal, { ModalButtons } from '../components/ui/Modal'
+import KpiCard from '../components/ui/KpiCard'
 
 export default function EquipmentPage() {
   const { currentUnit, showToast } = useStore()
