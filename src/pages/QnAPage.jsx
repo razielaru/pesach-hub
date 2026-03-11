@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import Modal, { ModalButtons } from '../components/UI/Modal'
+import Modal, { ModalButtons } from '../components/ui/Modal'
 
 const CATEGORIES = ['כשרות','הגעלה','ניקיון','בדיקת חמץ','הסדר','כללי']
 
