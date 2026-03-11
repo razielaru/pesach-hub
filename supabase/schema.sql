@@ -93,3 +93,44 @@ create table public.qna (
   answered_at timestamp with time zone,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
+
+-- צ'אט בין יחידות
+create table if not exists public.chat_messages (
+  id uuid default gen_random_uuid() primary key,
+  unit_id text references public.units(id) on delete cascade,
+  unit_name text not null,
+  channel_name text default 'כללי',
+  message text not null,
+  is_broadcast boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+-- מבזקים מהפיקוד
+create table if not exists public.broadcast_alerts (
+  id uuid default gen_random_uuid() primary key,
+  message text not null,
+  sent_by text,
+  is_active boolean default true,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+-- שיבוצי ליל הסדר
+create table if not exists public.seder_assignments (
+  id uuid default gen_random_uuid() primary key,
+  unit_id text references public.units(id) on delete cascade,
+  base_name text not null,
+  rabbi_name text,
+  participants integer,
+  kit_delivered boolean default false,
+  notes text,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+-- הרשאות
+alter table public.chat_messages enable row level security;
+alter table public.broadcast_alerts enable row level security;
+alter table public.seder_assignments enable row level security;
+
+create policy "public all" on public.chat_messages for all using (true);
+create policy "public all" on public.broadcast_alerts for all using (true);
+create policy "public all" on public.seder_assignments for all using (true);
