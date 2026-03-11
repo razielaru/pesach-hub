@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import Modal, { ModalButtons } from '../components/ui/Modal'
+import Modal, { ModalButtons } from '../components/UI/Modal'
 
 const SEV = { critical:'badge-red', high:'badge-red', medium:'badge-orange', low:'badge-blue' }
 const SEV_LABEL = { critical:'🔴 קריטי', high:'🟠 גבוה', medium:'🟡 בינוני', low:'🔵 נמוך' }
