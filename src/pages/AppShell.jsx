@@ -14,6 +14,8 @@ import CommandPage from './CommandPage'
 import UnitManagePage from './UnitManagePage'
 import ChatPage from './ChatPage'
 import SederPage from './SederPage'
+import ImportPage from './ImportPage'
+import VideosPage from './VideosPage'
 
 const BOTTOM_NAV = [
   { id: 'dashboard', label: 'ראשי',    icon: '🏠' },
@@ -35,8 +37,10 @@ const FULL_NAV = [
   { id: 'timeline',   label: '📅 לוח שנה',           admin: false },
   { id: 'chat',       label: "💬 צ'אט יחידות",      admin: false },
   { id: 'seder',      label: '🕍 שיבוצי ליל הסדר',  admin: false },
-  { id: 'command',    label: '⭐ פיקוד על',           admin: true  },
-  { id: 'unitmanage', label: '⚙ ניהול',              admin: true  },
+  { id: 'videos',     label: '🎥 סרטוני הכשרה',       admin: false },
+  { id: 'import',     label: '📊 ייבוא אקסל',         admin: true  },
+  { id: 'command',    label: '⭐ פיקוד על',            admin: true  },
+  { id: 'unitmanage', label: '⚙ ניהול',               admin: true  },
 ]
 
 export default function AppShell() {
@@ -97,6 +101,7 @@ export default function AppShell() {
     incidents: <IncidentsPage />, qna: <QnAPage />, timeline: <TimelinePage />,
     command: <CommandPage />, unitmanage: <UnitManagePage />,
     chat: <ChatPage />, seder: <SederPage />,
+    import: <ImportPage />, videos: <VideosPage />,
   }
 
   function navTo(id) { setPage(id); setMenuOpen(false) }
