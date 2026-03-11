@@ -158,16 +158,27 @@ export function TasksPage() {
   )
 }
 
-// ══ TIMELINE ══
+// ══ TIMELINE — Google Calendar style ══
 export function TimelinePage() {
-  const { currentUnit } = useStore()
+  const { currentUnit, isAdmin, isSenior, showToast } = useStore()
   const [milestones, setMilestones] = useState([])
   const [statuses, setStatuses] = useState({})
+  const [view, setView] = useState('calendar') // 'calendar' | 'list'
+  const [modal, setModal] = useState(false)
+  const [form, setForm] = useState({ title:'', description:'', due_date:'', category:'כללי' })
+  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 2)) // March 2026
+
+  const CATEGORIES_COLOR = {
+    ניקיון:'bg-blue-500', כשרות:'bg-yellow-500', לוגיסטיקה:'bg-purple-500',
+    הכשרה:'bg-green-500', סדר:'bg-orange-500', כללי:'bg-gray-500'
+  }
+  const CATEGORIES = Object.keys(CATEGORIES_COLOR)
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
+
   async function load() {
     const [ms, st] = await Promise.all([
-      supabase.from('milestones').select('*').order('sort_order'),
+      supabase.from('milestones').select('*').order('due_date'),
       supabase.from('milestone_status').select('*').eq('unit_id', currentUnit.id),
     ])
     setMilestones(ms.data || [])
@@ -175,57 +186,217 @@ export function TimelinePage() {
     ;(st.data||[]).forEach(s => { map[s.milestone_id] = s })
     setStatuses(map)
   }
+
+  async function addMilestone() {
+    if (!form.title || !form.due_date) return
+    await supabase.from('milestones').insert({
+      title: form.title, description: form.description,
+      due_date: form.due_date, category: form.category, sort_order: 99
+    })
+    showToast('אבן דרך נוספה ✅', 'green')
+    setModal(false); setForm({ title:'', description:'', due_date:'', category:'כללי' }); load()
+  }
+
   async function cycleMs(ms) {
     const cur = statuses[ms.id]?.status || 'pending'
     const next = { pending:'in_progress', in_progress:'done', done:'pending' }[cur]
     await supabase.from('milestone_status').upsert({
-      milestone_id: ms.id, unit_id: currentUnit.id, status: next, updated_at: new Date().toISOString()
+      milestone_id: ms.id, unit_id: currentUnit.id, status: next,
+      updated_at: new Date().toISOString()
     }, { onConflict: 'milestone_id,unit_id' })
     setStatuses(prev => ({ ...prev, [ms.id]: { ...prev[ms.id], status: next } }))
   }
 
-  const stCls = { pending:'border-border1', in_progress:'border-orange-500/50 bg-orange-900/8', done:'border-green-500/50 bg-green-900/8' }
-  const stLabel = { pending:'ממתין', in_progress:'בתהליך', done:'✓ הושלם' }
-  const stBadge = { pending:'badge-dim', in_progress:'badge-orange', done:'badge-green' }
-  const catColor = { ניקיון:'text-blue-400', כשרות:'text-gold', לוגיסטיקה:'text-purple-400', הכשרה:'text-green-400', סדר:'text-orange-400' }
+  // Calendar helpers
+  const year = currentMonth.getFullYear()
+  const month = currentMonth.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const lastDay = new Date(year, month + 1, 0)
+  // Days in grid (pad start to Sunday=0)
+  const startPad = (firstDay.getDay() + 1) % 7 // adjust for RTL (Saturday first)
+  const totalDays = lastDay.getDate()
+  const cells = []
+  for (let i = 0; i < startPad; i++) cells.push(null)
+  for (let d = 1; d <= totalDays; d++) cells.push(d)
+
+  const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
+  const dayNames = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳']
+
+  function getMsForDay(day) {
+    if (!day) return []
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    return milestones.filter(ms => ms.due_date === dateStr)
+  }
+
+  const stDot = { pending:'bg-border2', in_progress:'bg-orange-500', done:'bg-green-500' }
 
   return (
     <div className="space-y-5">
-      <h2 className="text-xl font-black">📅 טיימליין אבני דרך</h2>
-      <div className="relative">
-        <div className="absolute right-6 top-0 bottom-0 w-0.5 bg-border2" />
-        <div className="space-y-4">
-          {milestones.map((ms, i) => {
-            const st = statuses[ms.id]?.status || 'pending'
-            const due = new Date(ms.due_date)
-            const overdue = due < new Date() && st !== 'done'
-            return (
-              <div key={ms.id} className="flex gap-4 items-start">
-                <div className={`relative z-10 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0
-                  border-2 cursor-pointer transition-all hover:scale-110
-                  ${st==='done'?'bg-green-900/30 border-green-500':st==='in_progress'?'bg-orange-900/30 border-orange-500':'bg-bg3 border-border2'}`}
-                  onClick={() => cycleMs(ms)}>
-                  <span className="text-lg">{st==='done'?'✓':st==='in_progress'?'◉':'○'}</span>
-                </div>
-                <div className={`card flex-1 p-4 border-2 cursor-pointer hover:-translate-y-0.5 transition-all ${stCls[st]}`}
-                  onClick={() => cycleMs(ms)}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-bold ${catColor[ms.category]||'text-text3'}`}>{ms.category}</span>
-                      <span className="font-black">{ms.title}</span>
-                    </div>
-                    <span className={`badge ${stBadge[st]}`}>{stLabel[st]}</span>
-                  </div>
-                  {ms.description && <p className="text-text3 text-xs mb-1">{ms.description}</p>}
-                  <div className={`text-xs font-bold ${overdue?'text-red-400':'text-text3'}`}>
-                    📅 {due.toLocaleDateString('he-IL')} {overdue && '— באיחור!'}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <h2 className="text-xl font-black">📅 טיימליין — יומן מבצעי</h2>
+        <div className="flex gap-2 flex-wrap">
+          <div className="flex bg-bg3 border border-border1 rounded-xl overflow-hidden">
+            <button onClick={()=>setView('calendar')}
+              className={`px-4 py-2 text-xs font-bold transition-all ${view==='calendar'?'bg-gold text-black':'text-text2 hover:text-text1'}`}>
+              📅 יומן
+            </button>
+            <button onClick={()=>setView('list')}
+              className={`px-4 py-2 text-xs font-bold transition-all ${view==='list'?'bg-gold text-black':'text-text2 hover:text-text1'}`}>
+              📋 רשימה
+            </button>
+          </div>
+          {(isAdmin||isSenior) && (
+            <button className="btn btn-sm" onClick={()=>setModal(true)}>+ הוסף אבן דרך</button>
+          )}
         </div>
       </div>
+
+      {/* CALENDAR VIEW */}
+      {view === 'calendar' && (
+        <div className="card overflow-hidden">
+          {/* Month nav */}
+          <div className="panel-head">
+            <button className="btn btn-ghost btn-sm" onClick={()=>setCurrentMonth(new Date(year, month-1))}>→</button>
+            <span className="panel-title text-base">{monthNames[month]} {year}</span>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setCurrentMonth(new Date(year, month+1))}>←</button>
+          </div>
+
+          {/* Day headers */}
+          <div className="grid grid-cols-7 border-b border-border1">
+            {dayNames.map(d => (
+              <div key={d} className="text-center text-xs font-bold text-text3 py-2">{d}</div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          <div className="grid grid-cols-7">
+            {cells.map((day, i) => {
+              const dayMs = getMsForDay(day)
+              const today = new Date()
+              const isToday = day && today.getDate()===day && today.getMonth()===month && today.getFullYear()===year
+              return (
+                <div key={i}
+                  className={`min-h-[80px] p-1.5 border-b border-l border-border1/50 relative
+                    ${!day ? 'bg-bg0/50' : 'hover:bg-bg3/50'}
+                    ${i % 7 === 0 ? 'border-l-0' : ''}`}>
+                  {day && (
+                    <>
+                      <span className={`text-xs font-bold inline-flex w-6 h-6 items-center justify-center rounded-full
+                        ${isToday ? 'bg-gold text-black' : 'text-text3'}`}>
+                        {day}
+                      </span>
+                      <div className="mt-0.5 space-y-0.5">
+                        {dayMs.map(ms => {
+                          const st = statuses[ms.id]?.status || 'pending'
+                          const color = CATEGORIES_COLOR[ms.category] || 'bg-gray-500'
+                          return (
+                            <div key={ms.id}
+                              onClick={() => cycleMs(ms)}
+                              title={ms.title}
+                              className={`text-[9px] font-bold px-1 py-0.5 rounded cursor-pointer
+                                text-white truncate flex items-center gap-1
+                                ${color} ${st==='done'?'opacity-50 line-through':''}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${stDot[st]}`}/>
+                              {ms.title}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="p-3 flex flex-wrap gap-2 border-t border-border1">
+            {CATEGORIES.map(cat => (
+              <span key={cat} className="flex items-center gap-1 text-xs text-text3">
+                <span className={`w-2.5 h-2.5 rounded ${CATEGORIES_COLOR[cat]}`}/>
+                {cat}
+              </span>
+            ))}
+            <span className="flex items-center gap-1 text-xs text-text3 mr-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500"/> בתהליך
+            </span>
+            <span className="flex items-center gap-1 text-xs text-text3">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500"/> הושלם
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* LIST VIEW */}
+      {view === 'list' && (
+        <div className="relative">
+          <div className="absolute right-6 top-0 bottom-0 w-0.5 bg-border2" />
+          <div className="space-y-4">
+            {milestones.map(ms => {
+              const st = statuses[ms.id]?.status || 'pending'
+              const due = new Date(ms.due_date)
+              const overdue = due < new Date() && st !== 'done'
+              const color = CATEGORIES_COLOR[ms.category] || 'bg-gray-500'
+              return (
+                <div key={ms.id} className="flex gap-4 items-start">
+                  <div onClick={()=>cycleMs(ms)}
+                    className={`relative z-10 w-12 h-12 rounded-full flex items-center justify-center
+                      flex-shrink-0 border-2 cursor-pointer transition-all hover:scale-110
+                      ${st==='done'?'bg-green-900/30 border-green-500':st==='in_progress'?'bg-orange-900/30 border-orange-500':'bg-bg3 border-border2'}`}>
+                    <span className="text-lg">{st==='done'?'✓':st==='in_progress'?'◉':'○'}</span>
+                  </div>
+                  <div onClick={()=>cycleMs(ms)}
+                    className={`card flex-1 p-4 border-2 cursor-pointer hover:-translate-y-0.5 transition-all
+                      ${st==='done'?'border-green-500/30 opacity-70':st==='in_progress'?'border-orange-500/50':'border-border1'}`}>
+                    <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${color}`}>{ms.category}</span>
+                        <span className="font-black">{ms.title}</span>
+                      </div>
+                      <span className={`badge ${st==='done'?'badge-green':st==='in_progress'?'badge-orange':'badge-dim'}`}>
+                        {st==='done'?'✓ הושלם':st==='in_progress'?'בתהליך':'ממתין'}
+                      </span>
+                    </div>
+                    {ms.description && <p className="text-text3 text-xs mb-1">{ms.description}</p>}
+                    <div className={`text-xs font-bold ${overdue?'text-red-400':'text-text3'}`}>
+                      📅 {due.toLocaleDateString('he-IL')} {overdue && '— באיחור!'}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Add milestone modal */}
+      <Modal open={modal} onClose={()=>setModal(false)} title="➕ הוספת אבן דרך">
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-text3 font-bold block mb-1">כותרת</label>
+            <input className="form-input" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} />
+          </div>
+          <div>
+            <label className="text-xs text-text3 font-bold block mb-1">תיאור (אופציונלי)</label>
+            <input className="form-input" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-text3 font-bold block mb-1">תאריך יעד</label>
+              <input type="date" className="form-input" value={form.due_date}
+                onChange={e=>setForm(f=>({...f,due_date:e.target.value}))} />
+            </div>
+            <div>
+              <label className="text-xs text-text3 font-bold block mb-1">קטגוריה</label>
+              <select className="form-input" value={form.category}
+                onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+                {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+        <ModalButtons onClose={()=>setModal(false)} onSave={addMilestone} saveLabel="הוסף" />
+      </Modal>
     </div>
   )
 }
@@ -236,58 +407,133 @@ export function UnitManagePage() {
   const [units, setUnits] = useState([])
   const [pinModal, setPinModal] = useState(null)
   const [pinVal, setPinVal] = useState('')
+  const [bookModal, setBookModal] = useState(false)
+  const [bookUrl, setBookUrl] = useState('')
+  const [bookLoading, setBookLoading] = useState(false)
 
   useEffect(() => { load() }, [])
+
   async function load() {
-    const { data } = await supabase.from('units').select('*').eq('is_admin', false).order('name')
+    const { data } = await supabase.from('units').select('*').order('name')
     setUnits(data || [])
+    // Load book URL from a settings key
+    const { data: setting } = await supabase.from('qna')
+      .select('answer').eq('question', '__training_book__').single()
+    if (setting?.answer) setBookUrl(setting.answer)
   }
+
   async function uploadLogo(unitId, file) {
-    const ext = file.name.split('.').pop()
-    const path = `logos/${unitId}.${ext}`
-    await supabase.storage.from('unit-logos').upload(path, file, { upsert: true })
-    const { data } = supabase.storage.from('unit-logos').getPublicUrl(path)
-    await supabase.from('units').update({ logo_url: data.publicUrl }).eq('id', unitId)
-    showToast('לוגו עודכן ✅','green'); load()
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      // Store as base64 in logo_url for simplicity (no storage bucket needed)
+      await supabase.from('units').update({ logo_url: e.target.result }).eq('id', unitId)
+      showToast('לוגו עודכן ✅ — יופיע בדף הכניסה', 'green')
+      load()
+    }
+    reader.readAsDataURL(file)
   }
+
   async function savePin() {
     if (pinVal && !/^\d{4}$/.test(pinVal)) { alert('קוד חייב להיות 4 ספרות'); return }
     await supabase.from('units').update({ pin: pinVal || null }).eq('id', pinModal)
     showToast('קוד עודכן ✅','green'); setPinModal(null); setPinVal(''); load()
   }
 
+  async function saveBook() {
+    setBookLoading(true)
+    // Store book URL as a special QnA entry
+    const { data: existing } = await supabase.from('qna')
+      .select('id').eq('question', '__training_book__').single()
+    if (existing) {
+      await supabase.from('qna').update({ answer: bookUrl }).eq('id', existing.id)
+    } else {
+      await supabase.from('qna').insert({
+        unit_id: currentUnit.id, question: '__training_book__',
+        answer: bookUrl, category: 'מערכת', is_faq: false
+      })
+    }
+    showToast('קישור ספר ההכשרות עודכן ✅', 'green')
+    setBookLoading(false); setBookModal(false)
+  }
+
+  const nonAdmin = units.filter(u => !u.is_admin)
+
   return (
     <div className="space-y-5">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-black">⚙ ניהול יחידות — לוגואים וקודים</h2>
+        <h2 className="text-xl font-black">⚙ ניהול יחידות</h2>
+        <button className="btn btn-blue btn-sm" onClick={()=>setBookModal(true)}>
+          📚 ספר הכשרות
+        </button>
       </div>
+
+      {/* Training book link */}
+      {bookUrl && (
+        <div className="card p-4 flex items-center gap-3 bg-blue-900/10 border-blue-500/30">
+          <span className="text-2xl">📚</span>
+          <div className="flex-1">
+            <div className="font-bold text-sm">ספר ההכשרות מוגדר</div>
+            <div className="text-text3 text-xs truncate">{bookUrl}</div>
+          </div>
+          <a href={bookUrl} target="_blank" rel="noreferrer" className="btn btn-blue btn-sm">פתח ←</a>
+        </div>
+      )}
+
       <div className="card">
-        <div className="panel-head"><span className="panel-title">🖼 ניהול יחידות</span></div>
+        <div className="panel-head"><span className="panel-title">🖼 לוגואים, קודי כניסה — מופיעים בדף הכניסה</span></div>
         <div className="divide-y divide-border1/50">
-          {units.map(u => (
+          {nonAdmin.map(u => (
             <div key={u.id} className="flex items-center gap-4 p-4">
-              <div className="w-12 h-12 rounded-xl bg-bg4 flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden border border-border2">
-                {u.logo_url ? <img src={u.logo_url} className="w-full h-full object-cover" /> : u.icon}
+              <div className="w-14 h-14 rounded-xl bg-bg4 flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden border border-border2">
+                {u.logo_url
+                  ? <img src={u.logo_url} className="w-full h-full object-cover" alt={u.name} />
+                  : <span>{u.icon}</span>}
               </div>
               <div className="flex-1">
                 <div className="font-black">{u.name}</div>
                 <div className="text-text3 text-xs">{u.brigade} · קוד: {u.pin||'ללא קוד'}</div>
+                {u.logo_url && <div className="text-green-400 text-xs">✓ לוגו מוגדר</div>}
               </div>
-              <div className="flex gap-2">
-                <label className="btn btn-blue btn-sm cursor-pointer">
-                  🖼 לוגו
-                  <input type="file" accept="image/*" className="hidden" onChange={e=>e.target.files[0]&&uploadLogo(u.id,e.target.files[0])} />
+              <div className="flex gap-2 flex-wrap justify-end">
+                <label className="btn btn-sm cursor-pointer" style={{background:'rgba(59,130,246,.15)',borderColor:'rgba(59,130,246,.4)',color:'#60a5fa'}}>
+                  🖼 העלה לוגו
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={e=>e.target.files[0]&&uploadLogo(u.id,e.target.files[0])} />
                 </label>
+                {u.logo_url && (
+                  <button className="btn btn-sm" style={{background:'rgba(239,68,68,.15)',borderColor:'rgba(239,68,68,.4)',color:'#f87171'}}
+                    onClick={async()=>{
+                      await supabase.from('units').update({logo_url:null}).eq('id',u.id)
+                      showToast('לוגו הוסר','gold'); load()
+                    }}>🗑 הסר</button>
+                )}
                 <button className="btn btn-sm" onClick={()=>{ setPinModal(u.id); setPinVal(u.pin||'') }}>🔒 קוד</button>
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* PIN Modal */}
       <Modal open={!!pinModal} onClose={()=>setPinModal(null)} title="🔒 הגדרת קוד כניסה">
         <div><label className="text-xs text-text3 font-bold block mb-1">קוד 4 ספרות (ריק = ללא קוד)</label>
-          <input type="password" maxLength={4} className="form-input" value={pinVal} onChange={e=>setPinVal(e.target.value)} /></div>
+          <input type="password" maxLength={4} className="form-input" value={pinVal}
+            onChange={e=>setPinVal(e.target.value)} /></div>
         <ModalButtons onClose={()=>setPinModal(null)} onSave={savePin} saveLabel="שמור" saveClass="btn-red" />
+      </Modal>
+
+      {/* Book Modal */}
+      <Modal open={bookModal} onClose={()=>setBookModal(false)} title="📚 ספר הכשרות — קישור">
+        <div className="space-y-3">
+          <p className="text-text3 text-sm">הכנס קישור לספר ההכשרות (Google Drive, PDF, וכו'). יופיע לכל המשתמשים בחמ"ל ההלכתי.</p>
+          <div>
+            <label className="text-xs text-text3 font-bold block mb-1">קישור לספר</label>
+            <input className="form-input" placeholder="https://drive.google.com/..." value={bookUrl}
+              onChange={e=>setBookUrl(e.target.value)} />
+          </div>
+        </div>
+        <ModalButtons onClose={()=>setBookModal(false)} onSave={saveBook}
+          saveLabel={bookLoading ? 'שומר...' : '💾 שמור'} />
       </Modal>
     </div>
   )

@@ -62,7 +62,7 @@ export function PersonnelPage() {
         {filtered.map(p => (
           <div key={p.id} className="card p-4 flex items-center gap-4">
             <div className="w-10 h-10 rounded-full bg-bg4 flex items-center justify-center text-lg flex-shrink-0">
-              {p.role==='מכשיר'?'🎓':p.role==='ביינש'?'⚖️':p.role==='עורך סדר'?'📜':'👤'}
+              {p.role==='מכשיר'?'🎓':p.role==='ביינש'?'⚖️':p.role==='עורך סדר'?'📜':p.role==='רב'?'✡️':p.role==='קצין בקרה'?'🔍':'👤'}
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-bold text-sm">{p.name}</div>
@@ -88,7 +88,7 @@ export function PersonnelPage() {
             <input className="form-input" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} /></div>
           <div><label className="text-xs text-text3 font-bold block mb-1">תפקיד</label>
             <select className="form-input" value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
-              <option>מכשיר</option><option>ביינש</option><option>עורך סדר</option><option>קצ"ש</option><option>סגל</option>
+              <option>מכשיר</option><option>ביינש</option><option>עורך סדר</option><option>קצ"ש</option><option>רב</option><option>קצין בקרה</option><option>סגל</option>
             </select></div>
           <div><label className="text-xs text-text3 font-bold block mb-1">סטטוס</label>
             <select className="form-input" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
