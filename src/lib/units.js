@@ -11,6 +11,7 @@ export const UNITS = [
   { id: 'hativa_35',  name: 'חטיבה 35',       icon: '⚔', brigade: 'חטיבות',   pin: null,   is_admin: false, is_senior: false },
   { id: 'hativa_89',  name: 'חטיבה 89',       icon: '⚔', brigade: 'חטיבות',   pin: null,   is_admin: false, is_senior: false },
   { id: 'hativa_900', name: 'חטיבה 900',      icon: '⚔', brigade: 'חטיבות',   pin: null,   is_admin: false, is_senior: false },
+  { id: 'hativa_other', name: 'חטיבות היתר', icon: '⚔', brigade: 'חטיבות',   pin: null,   is_admin: false, is_senior: false },
   // אוגדות — דורשות PIN
   { id: 'ugdat_877',  name: 'אוגדת 877',       icon: '🎖', brigade: 'אוגדות',   pin: '8770', is_admin: false, is_senior: true  },
   { id: 'ugda_96',    name: 'אוגדת 96',        icon: '🎖', brigade: 'אוגדות',   pin: '9600', is_admin: false, is_senior: true  },
