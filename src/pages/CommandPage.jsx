@@ -4,12 +4,14 @@ import { useStore } from '../store/useStore'
 import { UNITS } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
+import BriefingMode, { useSmartAlerts } from './BriefingMode'
 
 export default function CommandPage() {
   const { currentUnit, showToast } = useStore()
   const [unitStats, setUnitStats] = useState({})
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState('table') // 'table' | 'map'
+  const [viewMode, setViewMode] = useState('table') // 'table' | 'map' | 'compare'
+  const [briefing, setBriefing] = useState(false)
   const [taskModal, setTaskModal] = useState(false)
   const [dispatchModal, setDispatchModal] = useState(false)
   const [taskForm, setTaskForm] = useState({ title:'', desc:'', priority:'high', date:'', target:'' })
@@ -93,6 +95,9 @@ export default function CommandPage() {
   const totalMissing = totals.reduce((a,s)=>a+s.equipMissing,0)
   const totalInc = totals.reduce((a,s)=>a+s.openInc,0)
   const avgClean = totals.length ? Math.round(totals.reduce((a,s)=>a+s.cleanPct,0)/totals.length) : 0
+  const daysLeft = Math.max(0, Math.ceil((new Date('2026-04-02') - new Date()) / 86400000))
+  const smartAlerts = useSmartAlerts(unitStats, daysLeft)
+  const criticalAlerts = smartAlerts.filter(a => a.level === 'critical')
 
   const healthColor = { green: 'border-green-500 bg-green-900/10', orange: 'border-orange-500 bg-orange-900/10', red: 'border-red-500 bg-red-900/10 animate-pulse' }
   const healthDot = { green: 'bg-green-500', orange: 'bg-orange-500', red: 'bg-red-500' }
@@ -102,33 +107,54 @@ export default function CommandPage() {
 
   return (
     <div className="space-y-5">
+      {briefing && <BriefingMode unitStats={unitStats} onClose={() => setBriefing(false)} />}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <h2 className="text-xl font-black">⭐ דשבורד פיקוד מרכז</h2>
         <div className="flex gap-2 flex-wrap">
-          {/* View toggle */}
           <div className="flex bg-bg3 border border-border1 rounded-xl overflow-hidden">
-            <button onClick={()=>setViewMode('table')}
-              className={`px-4 py-2 text-xs font-bold transition-all
-                ${viewMode==='table' ? 'bg-gold text-black' : 'text-text2 hover:text-text1'}`}>
-              📋 טבלה
-            </button>
-            <button onClick={()=>setViewMode('map')}
-              className={`px-4 py-2 text-xs font-bold transition-all
-                ${viewMode==='map' ? 'bg-gold text-black' : 'text-text2 hover:text-text1'}`}>
-              🗺️ מפה
-            </button>
+            {[['table','📋 טבלה'],['map','🗺️ מפה'],['compare','📊 השוואה']].map(([id,label])=>(
+              <button key={id} onClick={()=>setViewMode(id)}
+                className={`px-3 py-2 text-xs font-bold transition-all ${viewMode===id?'bg-gold text-black':'text-text2 hover:text-text1'}`}>
+                {label}
+              </button>
+            ))}
           </div>
+          <button onClick={() => setBriefing(true)}
+            className="btn text-xs px-3 py-2 bg-purple-900/40 border-purple-500/50 text-purple-300 hover:bg-purple-800/50">
+            🖥 הערכת מצב
+          </button>
           <button className="btn btn-blue btn-sm" onClick={()=>setTaskModal(true)}>📋 שלח משימה</button>
           <button className="btn btn-sm" onClick={()=>setDispatchModal(true)}>📦 ניפוק ציוד</button>
         </div>
       </div>
 
+      {/* Smart alerts */}
+      {criticalAlerts.length > 0 && (
+        <div className="space-y-2">
+          {criticalAlerts.slice(0,3).map(a=>(
+            <div key={a.id} className="bg-red-900/20 border border-red-500/40 rounded-xl px-4 py-2.5 flex items-center gap-3">
+              <span className="text-lg">{a.icon}</span>
+              <span className="text-red-200 text-sm font-bold flex-1">{a.text}</span>
+              <span className="badge badge-red text-[10px]">קריטי</span>
+            </div>
+          ))}
+          {criticalAlerts.length > 3 && <p className="text-red-400/70 text-xs text-center">ועוד {criticalAlerts.length-3} התראות — לחץ הערכת מצב לתמונה מלאה</p>}
+        </div>
+      )}
+      {smartAlerts.filter(a=>a.level==='warning').length > 0 && criticalAlerts.length === 0 && (
+        <div className="bg-orange-900/15 border border-orange-500/30 rounded-xl px-4 py-2.5 flex items-center gap-3">
+          <span>⚠️</span>
+          <span className="text-orange-200 text-sm font-bold">{smartAlerts.filter(a=>a.level==='warning').length} אזהרות פעילות — לחץ הערכת מצב לפרטים</span>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard label="הכשרה ממוצעת" value={`${avgTrained}%`} color="green" />
         <KpiCard label="ניקיון ממוצע" value={`${avgClean}%`} color="blue" />
-        <KpiCard label="ציוד חסר (סה״כ)" value={totalMissing} color="red" />
+        <KpiCard label='ציוד חסר (סה"כ)' value={totalMissing} color="red" />
         <KpiCard label="חריגים פתוחים" value={totalInc} color={totalInc > 0 ? 'red' : 'green'} />
       </div>
 
@@ -225,6 +251,75 @@ export default function CommandPage() {
                       </div>
                     )
                   })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* COMPARE VIEW — דשבורד השוואתי */}
+      {viewMode === 'compare' && (
+        <div className="space-y-5">
+          {['חטמ"רים','חטיבות','אוגדות'].map(brigade => {
+            const bUnits = nonAdminUnits.filter(u => u.brigade === brigade)
+            if (bUnits.length === 0) return null
+            const metrics = [
+              { key: 'trainedPct', label: '🎓 הכשרות', color: 'bg-green-500' },
+              { key: 'cleanPct',   label: '🧹 ניקיון',  color: 'bg-blue-500'  },
+            ]
+            return (
+              <div key={brigade} className="card overflow-hidden">
+                <div className="panel-head">
+                  <span className="panel-title font-black">{brigade} — השוואה</span>
+                  <span className="text-text3 text-xs">{bUnits.length} יחידות</span>
+                </div>
+                <div className="p-4 space-y-5">
+                  {metrics.map(m => (
+                    <div key={m.key}>
+                      <div className="text-xs font-bold text-text3 mb-2">{m.label}</div>
+                      <div className="space-y-2">
+                        {[...bUnits]
+                          .sort((a,b) => (unitStats[b.id]?.[m.key]||0) - (unitStats[a.id]?.[m.key]||0))
+                          .map(u => {
+                            const val = unitStats[u.id]?.[m.key] || 0
+                            const color = val >= 80 ? 'bg-green-500' : val >= 50 ? 'bg-orange-500' : 'bg-red-500'
+                            return (
+                              <div key={u.id} className="flex items-center gap-3">
+                                <span className="text-sm w-6">{u.icon}</span>
+                                <span className="text-xs font-bold text-text2 w-28 flex-shrink-0 truncate">{u.name}</span>
+                                <div className="flex-1 h-5 bg-bg3 rounded-full overflow-hidden border border-border1">
+                                  <div className={`h-full rounded-full transition-all duration-500 flex items-center justify-end pr-1.5 ${color}`}
+                                    style={{ width: `${Math.max(val, 3)}%` }}>
+                                    {val >= 15 && <span className="text-[10px] font-black text-white">{val}%</span>}
+                                  </div>
+                                </div>
+                                {val < 15 && <span className="text-xs font-black text-text2 w-8">{val}%</span>}
+                                {/* Critical badge */}
+                                {val < 30 && <span className="badge badge-red text-[9px]">⚠</span>}
+                              </div>
+                            )
+                          })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Incidents row */}
+                  <div>
+                    <div className="text-xs font-bold text-text3 mb-2">🆘 חריגים פתוחים</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {bUnits.map(u => {
+                        const inc = unitStats[u.id]?.openInc || 0
+                        return (
+                          <div key={u.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs
+                            ${inc > 0 ? 'border-red-500/40 bg-red-900/15 text-red-300' : 'border-green-500/30 bg-green-900/10 text-green-400'}`}>
+                            <span>{u.icon}</span>
+                            <span className="font-bold">{inc > 0 ? `${inc} חריג` : '✓ תקין'}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
             )
