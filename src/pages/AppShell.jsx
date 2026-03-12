@@ -234,6 +234,11 @@ export default function AppShell() {
           <span className="text-xl">☰</span>
           <span className="text-[10px] font-bold">עוד</span>
         </button>
+        <button onClick={logout}
+          className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-red-400/70 hover:text-red-400 transition-colors border-r border-border1/50">
+          <span className="text-xl">🚪</span>
+          <span className="text-[10px] font-bold">יציאה</span>
+        </button>
       </nav>
     </div>
   )
