@@ -443,7 +443,7 @@ export function UnitManagePage() {
       load()
     }
     img.src = url
-  }  }
+  }
 
   async function savePin() {
     if (pinVal && !/^\d{4}$/.test(pinVal)) { alert('קוד חייב להיות 4 ספרות'); return }
