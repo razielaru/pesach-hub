@@ -9,8 +9,8 @@ export default function ChatPage() {
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
-  const [imagePreview, setImagePreview] = useState(null)  // base64 preview
-  const [imageFile, setImageFile] = useState(null)        // File object
+  const [imagePreview, setImagePreview] = useState(null)
+  const [imageFile, setImageFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -20,7 +20,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!currentUnit) return
     load()
-    const sub = supabase.channel('chat_realtime_' + channel)
+    const sub = supabase.channel('chat_rt_' + channel)
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'chat_messages' },
         payload => { if (payload.new.channel_name === channel) setMessages(prev => [...prev, payload.new]) })
       .subscribe()
@@ -52,13 +52,18 @@ export default function ChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  async function uploadImage(file) {
-    // Convert to base64 and store in message (simple approach, no storage bucket needed)
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = ev => resolve(ev.target.result) // base64 data URL
-      reader.onerror = reject
-      reader.readAsDataURL(file)
+  async function compressImage(file) {
+    return new Promise(res => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX = 800
+        const ratio = Math.min(MAX/img.width, MAX/img.height, 1)
+        canvas.width = img.width * ratio; canvas.height = img.height * ratio
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        res(canvas.toDataURL('image/jpeg', 0.75))
+      }
+      img.src = URL.createObjectURL(file)
     })
   }
 
@@ -68,27 +73,32 @@ export default function ChatPage() {
 
     let imageData = null
     if (imageFile) {
-      try { imageData = await uploadImage(imageFile) }
-      catch { alert('שגיאה בהעלאת תמונה'); setUploading(false); return }
+      try { imageData = await compressImage(imageFile) }
+      catch { alert('שגיאה בעיבוד תמונה'); setUploading(false); return }
     }
 
-    const msg = {
+    // Optimistic update
+    const tempMsg = {
+      id: 'temp_' + Date.now(),
       unit_id: currentUnit.id,
       unit_name: currentUnit.name,
       channel_name: channel,
-      message: text.trim() || (imageData ? '📷 תמונה' : ''),
+      message: text.trim() || '',
       image_url: imageData,
       is_broadcast: isAdmin || isSenior,
       created_at: new Date().toISOString(),
-      id: 'temp_' + Date.now(),
     }
-    setMessages(prev => [...prev, msg])
+    setMessages(prev => [...prev, tempMsg])
+    const sentText = text.trim()
     setText(''); clearImage(); setUploading(false)
 
     await supabase.from('chat_messages').insert({
-      unit_id: msg.unit_id, unit_name: msg.unit_name,
-      channel_name: msg.channel_name, message: msg.message,
-      image_url: msg.image_url, is_broadcast: msg.is_broadcast,
+      unit_id: currentUnit.id,
+      unit_name: currentUnit.name,
+      channel_name: channel,
+      message: sentText,
+      image_url: imageData,
+      is_broadcast: isAdmin || isSenior,
     })
   }
 
@@ -107,13 +117,12 @@ export default function ChatPage() {
     grouped.push({type:'msg',...m})
   }
 
-  const unitColors = {}
   const palette = ['text-blue-400','text-green-400','text-purple-400','text-orange-400','text-pink-400','text-cyan-400','text-yellow-400','text-red-400']
+  const unitColors = {}
   UNITS.forEach((u,i) => { unitColors[u.id] = palette[i % palette.length] })
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {/* Header */}
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <h2 className="text-xl font-black">💬 צ׳אט יחידות</h2>
         <div className="text-xs text-green-400 flex items-center gap-1.5">
@@ -168,9 +177,8 @@ export default function ChatPage() {
                   ${isMe ? 'bg-yellow-900/40 border border-gold/30 text-text1 rounded-bl-sm'
                     : isBroadcast ? 'bg-purple-900/30 border border-purple-500/40 text-text1 rounded-br-sm'
                     : 'bg-bg3 border border-border1 text-text1 rounded-br-sm'}`}>
-                  {/* Image */}
                   {item.image_url && (
-                    <div className="mb-2">
+                    <div className={item.message ? 'mb-2' : ''}>
                       <img
                         src={item.image_url}
                         alt="תמונה"
@@ -180,11 +188,7 @@ export default function ChatPage() {
                       />
                     </div>
                   )}
-                  {/* Text (only if not just the placeholder) */}
-                  {item.message && item.message !== '📷 תמונה' && (
-                    <span>{item.message}</span>
-                  )}
-                  {!item.message && item.image_url && null}
+                  {item.message && <span>{item.message}</span>}
                 </div>
                 <span className="text-[10px] text-text3 px-1">{timeStr(item.created_at)}</span>
               </div>
@@ -194,7 +198,7 @@ export default function ChatPage() {
         <div ref={bottomRef}/>
       </div>
 
-      {/* Image preview strip */}
+      {/* Image preview */}
       {imagePreview && (
         <div className="flex items-center gap-3 mt-2 px-3 py-2 bg-bg3 border border-border2 rounded-xl flex-shrink-0">
           <img src={imagePreview} alt="preview" className="w-14 h-14 object-cover rounded-lg border border-border1"/>
@@ -203,9 +207,8 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Input row */}
+      {/* Input */}
       <div className="flex gap-2 mt-2 flex-shrink-0 items-end">
-        {/* Image button */}
         <button
           onClick={() => fileInputRef.current?.click()}
           className="flex-shrink-0 w-10 h-10 rounded-xl bg-bg3 border border-border1 hover:border-gold/50 flex items-center justify-center text-lg transition-all"
@@ -219,15 +222,13 @@ export default function ChatPage() {
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKey}
           rows={1}
-          placeholder={`הודעה לערוץ "${channel}"...`}
+          placeholder={`הודעה לערוץ "${channel}"... (Enter לשליחה)`}
           className="flex-1 form-input resize-none py-2.5 text-sm"
           style={{minHeight:44,maxHeight:120}}
           disabled={uploading}
         />
         <button onClick={send} disabled={(!text.trim() && !imageFile) || uploading}
-          className={`btn px-4 flex-shrink-0 transition-all
-            ${channel==='דחוף 🆘'?'bg-red-600 hover:bg-red-500 border-red-500':''}
-            ${(!text.trim()&&!imageFile)||uploading?'opacity-40 cursor-not-allowed':''}`}>
+          className={`btn px-4 flex-shrink-0 ${channel==='דחוף 🆘'?'bg-red-600 hover:bg-red-500 border-red-500':''} ${(!text.trim()&&!imageFile)||uploading?'opacity-40 cursor-not-allowed':''}`}>
           {uploading ? '⏳' : 'שלח ↑'}
         </button>
       </div>
