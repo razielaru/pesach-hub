@@ -25,12 +25,14 @@ export default function QnAPage() {
   const [answerText, setAnswerText] = useState('')
   const [tab, setTab] = useState('questions')
   const [bookUrl, setBookUrl] = useState('')
+  
   // AI Rabbi
   const [aiMessages, setAiMessages] = useState([])
   const [aiInput, setAiInput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
   const aiBottomRef = useRef(null)
+
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
 
   async function load() {
@@ -43,7 +45,6 @@ export default function QnAPage() {
         ? supabase.from('qna').select('*').eq('is_faq', false)
             .neq('question','__training_book__').order('created_at',{ascending:false})
         : Promise.resolve({ data: [] }),
-      // חיפוש ספר הכשרות לפי יחידה ספציפית — מונע שגיאת .single() כשיש כמה שורות
       supabase.from('qna').select('answer')
         .eq('question','__training_book__')
         .eq('unit_id', currentUnit.id)
@@ -81,14 +82,19 @@ export default function QnAPage() {
   const myPending = questions.filter(q => !q.answer)
   const myAnswered = questions.filter(q => q.answer)
 
+  // הפונקציה המשודרגת שיוצרת את אפקט ההקלדה (Streaming)
   async function askAI(text) {
     if (!text.trim() || aiLoading) return
+    
     const userMsg = { role: 'user', content: text }
     const newMsgs = [...aiMessages, userMsg]
-    setAiMessages(newMsgs)
+    
+    // מוסיפים מיד בועה ריקה עבור התשובה של הרב שתתחיל להתמלא
+    setAiMessages([...newMsgs, { role: 'assistant', content: '' }])
     setAiInput('')
     setAiLoading(true)
     setAiError('')
+
     try {
       const res = await fetch('/api/ask', {
         method: 'POST',
@@ -98,12 +104,62 @@ export default function QnAPage() {
           systemPrompt: 'אתה רב צבאי מומחה בהלכות פסח. ענה בעברית, בצורה קצרה וברורה לחיילים. התבסס על ספר ההכשרות הצבאי.'
         })
       })
-      if (!res.ok) throw new Error(`שגיאת שרת ${res.status}`)
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      const reply = data.text || 'לא התקבלה תשובה'
-      setAiMessages([...newMsgs, { role: 'assistant', content: reply }])
-      setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+
+      // אם יש שגיאה רגילה מהשרת (JSON)
+      const contentType = res.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        const data = await res.json()
+        if (data.text) {
+          setAiMessages(prev => {
+            const updated = [...prev]
+            updated[updated.length - 1].content = data.text
+            return updated
+          })
+          setAiLoading(false)
+          return
+        }
+      }
+
+      // קריאת זרם המילים באוויר (Stream) מ-Gemini
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let done = false
+      let aiReply = ''
+      let buffer = ''
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read()
+        done = readerDone
+        if (value) {
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() // שומרים את השורה החתוכה לפעם הבאה
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.substring(6)
+              if (dataStr.trim() === '[DONE]') continue
+              try {
+                const dataObj = JSON.parse(dataStr)
+                const textPart = dataObj.candidates?.[0]?.content?.parts?.[0]?.text
+                if (textPart) {
+                  aiReply += textPart
+                  // מעדכנים את הבועה האחרונה עם המילה החדשה
+                  setAiMessages(prev => {
+                    const updated = [...prev]
+                    updated[updated.length - 1].content = aiReply
+                    return updated
+                  })
+                  // גוללים למטה עם כל מילה שנוספת
+                  aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+                }
+              } catch (e) {
+                // מתעלמים משגיאות חיתוך בזמן אמת
+              }
+            }
+          }
+        }
+      }
     } catch (e) {
       setAiError('שגיאה: ' + e.message)
     }
@@ -153,7 +209,7 @@ export default function QnAPage() {
             <div className="font-bold text-sm mb-1">🤖 רב AI — שאלות הלכתיות לפסח</div>
             <div className="text-text3 text-xs">מבוסס בינה מלאכותית · לא מחליף פסיקת רב · לשאלות מורכבות פנה לרב יחידה</div>
           </div>
-          {/* Quick questions */}
+          
           <div className="flex gap-2 flex-wrap">
             {QUICK_QUESTIONS.map(q => (
               <button key={q} onClick={() => askAI(q)}
@@ -162,8 +218,8 @@ export default function QnAPage() {
               </button>
             ))}
           </div>
-          {/* Messages */}
-          <div className="card p-4 space-y-3 min-h-[200px]">
+          
+          <div className="card p-4 space-y-3 min-h-[200px] max-h-[500px] overflow-y-auto">
             {aiMessages.length === 0 && (
               <div className="text-center text-text3 py-8">שאל שאלה הלכתית...</div>
             )}
@@ -179,13 +235,16 @@ export default function QnAPage() {
                 </div>
               </div>
             ))}
-            {aiLoading && (
+            
+            {/* מציג "חושב..." רק לפני שהמילה הראשונה יורדת */}
+            {aiLoading && aiMessages[aiMessages.length - 1]?.content === '' && (
               <div className="flex justify-start">
                 <div className="bg-bg3 border border-border1 rounded-xl px-4 py-2 text-sm text-text3">
-                  ✍️ מנסח תשובה...
+                  ✍️ מעיין בספר ההכשרות...
                 </div>
               </div>
             )}
+            
             {aiError && (
               <div className="text-red-400 text-xs bg-red-900/20 border border-red-500/30 rounded-lg p-3">
                 ⚠️ {aiError}
@@ -193,7 +252,7 @@ export default function QnAPage() {
             )}
             <div ref={aiBottomRef} />
           </div>
-          {/* Input */}
+          
           <div className="flex gap-2">
             <textarea
               className="form-input flex-1 resize-none h-12"
