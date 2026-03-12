@@ -36,9 +36,6 @@ const FULL_NAV = [
   { id: 'qna',        label: '⚖️ שו"ת הלכתי',       admin: false },
   { id: 'timeline',   label: '📅 לוח שנה',           admin: false },
   { id: 'chat',       label: "💬 צ'אט יחידות",      admin: false },
-  { id: 'seder',      label: '🕍 שיבוצי ליל הסדר',  admin: false },
-  { id: 'videos',     label: '🎥 סרטוני הכשרה',       admin: false },
-  { id: 'import',     label: '📊 ייבוא אקסל',         admin: true  },
   { id: 'command',    label: '⭐ פיקוד על',            admin: true  },
   { id: 'unitmanage', label: '⚙ ניהול',               admin: true  },
 ]
@@ -100,8 +97,7 @@ export default function AppShell() {
     equipment: <EquipmentPage />, cleaning: <CleaningPage />, tasks: <TasksPage />,
     incidents: <IncidentsPage />, qna: <QnAPage />, timeline: <TimelinePage />,
     command: <CommandPage />, unitmanage: <UnitManagePage />,
-    chat: <ChatPage />, seder: <SederPage />,
-    import: <ImportPage />, videos: <VideosPage />,
+    chat: <ChatPage />,
   }
 
   function navTo(id) { setPage(id); setMenuOpen(false) }
