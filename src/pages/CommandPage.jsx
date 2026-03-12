@@ -5,6 +5,7 @@ import { UNITS } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
 import BriefingMode, { useSmartAlerts } from './BriefingMode'
+import MapView from './MapView'
 
 export default function CommandPage() {
   const { currentUnit, showToast } = useStore()
@@ -207,56 +208,7 @@ export default function CommandPage() {
       )}
 
       {/* MAP VIEW */}
-      {viewMode === 'map' && (
-        <div className="space-y-4">
-          <p className="text-text3 text-xs">לחץ על יחידה לפרטים · ירוק=תקין · כתום=דורש תשומת לב · אדום=קריטי</p>
-          {/* Brigade groups */}
-          {['חטמ"רים','חטיבות','אוגדות'].map(brigade => {
-            const bUnits = nonAdminUnits.filter(u=>u.brigade===brigade)
-            return (
-              <div key={brigade}>
-                <div className="text-xs text-text3 uppercase font-bold tracking-widest mb-2">{brigade}</div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {bUnits.map(u => {
-                    const s = unitStats[u.id] || {}
-                    const h = s.health || 'orange'
-                    return (
-                      <div key={u.id}
-                        className={`card p-4 border-2 cursor-pointer hover:-translate-y-1 transition-all
-                          ${healthColor[h]}`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-lg">{u.icon}</span>
-                          <div className={`w-3 h-3 rounded-full ${healthDot[h]} ${h==='red'?'animate-pulse':''}`} />
-                        </div>
-                        <div className="font-black text-sm mb-1">{u.name}</div>
-                        <div className={`text-xs font-bold ${h==='green'?'text-green-400':h==='orange'?'text-orange-400':'text-red-400'}`}>
-                          {healthLabel[h]}
-                        </div>
-                        {/* Mini stats */}
-                        <div className="mt-2 space-y-1">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-text3 w-10">🎓</span>
-                            <div className="pbar flex-1"><div className="pbar-fill bg-green-500" style={{width:`${s.trainedPct||0}%`}}/></div>
-                            <span className="text-[10px] text-text3">{s.trainedPct||0}%</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-text3 w-10">🧹</span>
-                            <div className="pbar flex-1"><div className="pbar-fill bg-blue-500" style={{width:`${s.cleanPct||0}%`}}/></div>
-                            <span className="text-[10px] text-text3">{s.cleanPct||0}%</span>
-                          </div>
-                        </div>
-                        {s.openInc > 0 && (
-                          <div className="mt-2 text-red-400 text-xs font-bold">🆘 {s.openInc} חריג פתוח</div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {viewMode === 'map' && <MapView unitStats={unitStats} />}
 
       {/* COMPARE VIEW — דשבורד השוואתי */}
       {viewMode === 'compare' && (
