@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import supabase from '../supabaseClient'import { useStore } from '../store/useStore'
+import supabase from '../supabaseClient'
+import { useStore } from '../store/useStore'
 import { UNITS } from '../lib/units'
 
 const DEFAULT_COORDS = {
