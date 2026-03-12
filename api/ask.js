@@ -1,7 +1,9 @@
 import { HALACHA_DB } from './knowledge.js';
 
 export const config = { runtime: 'edge' };
-const HALACHA_SUMMARY = HALACHA_DB.slice(0, 3000);
+
+// אין יותר חיתוך! מעבירים לרב ה-AI את כל הספר במלואו
+const HALACHA_SUMMARY = HALACHA_DB;
 
 export default async function handler(req) {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
@@ -15,18 +17,19 @@ export default async function handler(req) {
 
     const enhancedSystemPrompt = `${systemPrompt}
 
-=== קטע מספר ההכשרות הצבאי (פסח תשפ"ו) ===
+=== ספר ההכשרות הצבאי המלא (פסח תשפ"ו) ===
 ${HALACHA_SUMMARY}
-=== סוף הקטע ===
+=== סוף הספר ===
 
-הנחיות:
-ענה בעברית קצרה, ברורה ומקצועית.
-אם השאלה מחוץ להלכות פסח או כשרות — ציין זאת מיד ואל תמציא הלכות.
-אם יש ספק הלכתי או מקרה חריג — המלץ לפנות לרב היחידה.`;
+הנחיות קריטיות:
+1. ענה בעברית קצרה, ברורה ומקצועית לחיילים.
+2. אתה פוסק אך ורק על בסיס "ספר ההכשרות הצבאי" המצורף. אל תמציא הלכות או תשתמש בידע כללי. 
+3. אם יש כלי שכתוב לגביו "אין להכשיר" או דורש אישור חריג, ציין זאת במפורש בדיוק כמו שכתוב בספר.
+4. אם השאלה מחוץ להלכות פסח או כשרות — ציין זאת מיד.
+5. הוסף בסוף התשובה: בכל מקרה של ספק, פנה לרב היחידה.`;
 
-    const targetModel = "gemini-2.5-flash";
+    const targetModel = "gemini-2.5-pro";
     
-    // שינוי הכתובת ל-streamGenerateContent כדי לקבל זרם של מילים
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
       {
@@ -48,7 +51,6 @@ ${HALACHA_SUMMARY}
       return new Response(JSON.stringify({ text: `❌ שגיאה בחיבור למודל:\n${err}` }), { headers: { "Content-Type": "application/json" } });
     }
 
-    // הזרמת התשובה (Stream) ישירות לדפדפן בזמן אמת!
     return new Response(response.body, {
       headers: {
         "Content-Type": "text/event-stream",
