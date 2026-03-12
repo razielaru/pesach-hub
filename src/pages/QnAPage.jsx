@@ -97,6 +97,7 @@ function AiRabbiTab({ bookUrls }) {
 • התחשב במציאות הצבאית (שטח, מבצעים, שמירה בליל הסדר)
 • ציין מקור קצר (שו"ע, משנ"ב) כשרלוונטי
 • תשובה קצרה ומעשית — עד 200 מילה
+• ענה אך ורק על בסיס המקורות המצורפים. אם התשובה לא שם, אמור שאינך יודע.
 • אם השאלה אינה הלכתית — הסבר בנימוס${bookUrls.length>0?`\nחוברות הכשרה זמינות: ${bookUrls.join(', ')}`:''}
 תמיד סיים עם: "⚠️ לשאלות מורכבות — פנה לרב יחידה"`
 
@@ -114,22 +115,27 @@ function AiRabbiTab({ bookUrls }) {
       ]).filter(m=>m.content)
       messages.push({role:'user',content:q})
 
-      const res = await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:SYSTEM,messages})
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, systemPrompt: SYSTEM })
       })
+      
       const data = await res.json()
-      const text = data.content?.[0]?.text || 'שגיאה בקבלת תשובה'
+      if (data.error) throw new Error(data.error)
+
+      const text = data.text || 'שגיאה בקבלת תשובה'
+      
       setHistory(prev => {
         const updated = [...prev]
         updated[updated.length-1] = {...updated[updated.length-1], a:text}
         return updated.slice(-8)
       })
-    } catch {
+    } catch (err) {
+      console.error(err);
       setHistory(prev=>{
         const updated=[...prev]
-        updated[updated.length-1]={...updated[updated.length-1],a:'שגיאת רשת — נסה שוב'}
+        updated[updated.length-1]={...updated[updated.length-1],a:'שגיאת חיבור — נסה שוב'}
         return updated
       })
     }
@@ -146,7 +152,6 @@ function AiRabbiTab({ bookUrls }) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="card p-4 bg-purple-900/10 border-purple-500/30">
         <div className="flex items-center gap-3">
           <span className="text-3xl">🤖</span>
@@ -165,7 +170,6 @@ function AiRabbiTab({ bookUrls }) {
         )}
       </div>
 
-      {/* Suggestions — only when empty */}
       {history.length===0 && (
         <div>
           <p className="text-xs text-text3 mb-2 font-bold">שאלות נפוצות — לחץ לשאול:</p>
@@ -180,18 +184,15 @@ function AiRabbiTab({ bookUrls }) {
         </div>
       )}
 
-      {/* Chat history */}
       {history.length>0 && (
         <div className="space-y-4 max-h-[50vh] overflow-y-auto p-1">
           {history.map((item,i)=>(
             <div key={i} className="space-y-3">
-              {/* User bubble */}
               <div className="flex justify-end">
                 <div className="bg-gold/20 border border-gold/30 rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[85%]">
                   <p className="text-sm font-bold">{item.q}</p>
                 </div>
               </div>
-              {/* AI bubble */}
               <div className="flex justify-start">
                 <div className="bg-purple-900/20 border border-purple-500/30 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]">
                   <div className="flex items-center gap-2 mb-2">
@@ -213,7 +214,6 @@ function AiRabbiTab({ bookUrls }) {
         </div>
       )}
 
-      {/* Input */}
       <div className="card p-4 sticky bottom-0">
         <div className="flex gap-3 items-end">
           <textarea
@@ -284,15 +284,16 @@ export default function QnAPage() {
     showToast('תשובה נשמרה ✅','green'); setAnswerModal(null); setAnswerText(''); load()
   }
 
+  // כאן הוספנו את הטאב של ניהול הספר
   const myPending  = questions.filter(q=>!q.answer)
   const myAnswered = questions.filter(q=>q.answer)
-
   const allTabs = [
     {id:'questions', label:`❓ שאלות שלי (${myPending.length})`},
     {id:'faq',       label:'📚 מאגר הלכה'},
     ...(isAdmin||isSenior?[{id:'all',label:`📋 כל השאלות (${globalQ.length})`}]:[]),
     {id:'ai',        label:'🤖 רב AI'},
     {id:'videos',    label:'🎥 סרטונים'},
+    ...(isAdmin||isSenior?[{id:'book_manage',label:'⚖️ ספר הכשרות'}]:[])
   ]
 
   return (
@@ -302,7 +303,7 @@ export default function QnAPage() {
         {tab==='questions' && <button className="btn" onClick={()=>setModal(true)}>+ שאל שאלה</button>}
       </div>
 
-      {bookUrl && tab!=='videos' && tab!=='ai' && (
+      {bookUrl && tab!=='videos' && tab!=='ai' && tab!=='book_manage' && (
         <a href={bookUrl} target="_blank" rel="noreferrer" className="card p-4 flex items-center gap-3 border-blue-500/30 bg-blue-900/10 hover:border-blue-400/60 transition-all cursor-pointer no-underline block">
           <span className="text-3xl">📚</span>
           <div className="flex-1"><div className="font-bold">ספר הכשרות — פסח תשפ"ו</div><div className="text-text3 text-xs">לחץ לפתיחה ←</div></div>
@@ -313,6 +314,50 @@ export default function QnAPage() {
       <div className="flex gap-2 flex-wrap">
         {allTabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`ftab ${tab===t.id?'active':''}`}>{t.label}</button>)}
       </div>
+
+      {/* הטאב החדש לניהול הספר */}
+      {tab==='book_manage' && (isAdmin || isSenior) && (
+        <div className="card p-5 space-y-4 border-gold/30 bg-gold/5">
+          <div className="flex items-center gap-3 border-b border-border1 pb-4">
+            <span className="text-3xl">📚</span>
+            <div>
+              <div className="font-black text-lg text-gold">ניהול ספר הכשרות</div>
+              <div className="text-text3 text-xs">כאן תוכל להגדיר את הקישור לספר הכשרות של פסח שיופיע לכל החיילים והרבנים.</div>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <label className="text-sm font-bold block text-text2">קישור לקובץ ספר הכשרות (Drive, PDF וכו'):</label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                className="form-input flex-1" 
+                placeholder="https://..."
+                value={bookUrl}
+                onChange={(e) => setBookUrl(e.target.value)}
+              />
+              <button 
+                className="btn bg-gold text-black border-none hover:bg-gold2 flex-shrink-0"
+                onClick={async () => {
+                  if(!bookUrl.trim()) return showToast('נא להזין קישור', 'orange');
+                  const { error } = await supabase.from('qna').upsert(
+                    { question: '__training_book__', answer: bookUrl, unit_id: currentUnit.id, is_faq: true, category: 'כללי' },
+                    { onConflict: 'question' }
+                  );
+                  if(!error) {
+                    showToast('קישור נשמר בהצלחה! ✅', 'green');
+                    load();
+                  } else {
+                    showToast('שגיאה בשמירה', 'red');
+                  }
+                }}
+              >
+                💾 שמור קישור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tab==='questions' && (
         <div className="space-y-3">
