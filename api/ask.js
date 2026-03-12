@@ -34,7 +34,7 @@ ${HALACHA_SUMMARY}
 
     // קריאה ל-Gemini עם הכתובת הבטוחה ביותר: gemini-1.5-flash-latest
 const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
   {
         method: "POST",
         headers: {
