@@ -13,9 +13,6 @@ import TimelinePage from './TimelinePage'
 import CommandPage from './CommandPage'
 import UnitManagePage from './UnitManagePage'
 import ChatPage from './ChatPage'
-import SederPage from './SederPage'
-import ImportPage from './ImportPage'
-import VideosPage from './VideosPage'
 
 const BOTTOM_NAV = [
   { id: 'dashboard', label: 'ראשי',    icon: '🏠' },
