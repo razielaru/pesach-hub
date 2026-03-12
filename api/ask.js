@@ -35,29 +35,29 @@ ${HALACHA_SUMMARY}
 אם יש ספק הלכתי — המלץ לפנות לרב היחידה.
 `;
 
-   const response = await fetch(
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: enhancedSystemPrompt }]
-          },
-          contents: messages.map(m => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: m.content }]
-          })),
-          generationConfig: {
-            maxOutputTokens: 800,
-            temperature: 0.1
-          }
-        })
+const response = await fetch(
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${process.env.GEMINI_API_KEY}`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: enhancedSystemPrompt }]
+      },
+      contents: messages.map(m => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }]
+      })),
+      generationConfig: {
+        maxOutputTokens: 800,
+        temperature: 0.1
       }
-    );
-
+    })
+  }
+);
+    
     const data = await response.json();
 
     if (!response.ok) {
