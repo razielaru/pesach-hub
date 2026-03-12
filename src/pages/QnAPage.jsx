@@ -100,11 +100,12 @@ export default function QnAPage() {
       })
       if (!res.ok) throw new Error(`שגיאת שרת ${res.status}`)
       const data = await res.json()
-      const reply = data.content?.[0]?.text || data.candidates?.[0]?.content?.parts?.[0]?.text || 'לא התקבלה תשובה'
+      if (data.error) throw new Error(data.error)
+      const reply = data.text || 'לא התקבלה תשובה'
       setAiMessages([...newMsgs, { role: 'assistant', content: reply }])
       setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
     } catch (e) {
-      setAiError('שגיאת חיבור — בדוק שה-GEMINI_API_KEY מוגדר ב-Vercel')
+      setAiError('שגיאה: ' + e.message)
     }
     setAiLoading(false)
   }
