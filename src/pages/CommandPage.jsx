@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import supabase from '../supabaseClient' // <--- ודא שזה הנתיב הנכון אצלך!
 import { useStore } from '../store/useStore'
 import { UNITS } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
@@ -135,13 +135,19 @@ export default function CommandPage() {
   )
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 print:space-y-3 print:bg-white print:text-black">
       {briefing && <BriefingMode unitStats={unitStats} onClose={() => setBriefing(false)} />}
 
+      {/* כותרת מיוחדת שמופיעה רק בהדפסה/PDF */}
+      <div className="hidden print:block text-center border-b-2 border-black pb-4 mb-4">
+        <h1 className="text-3xl font-black">דו"ח הערכת מצב — חפ"ק רבנות פקמ"ז</h1>
+        <p className="text-gray-600 mt-1">הופק בתאריך: {new Date().toLocaleString('he-IL')}</p>
+      </div>
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 print:hidden">
         <div className="flex items-center gap-3">
-          <h2 className="text-xl font-black">⭐ דשבורד פיקוד מרכז</h2>
+          <h2 className="text-xl font-black text-gold">⭐ דשבורד פיקוד מרכז</h2>
           {loading && loadedCount > 0 && (
             <span className="text-xs text-text3 bg-bg3 border border-border1 px-2 py-1 rounded-full animate-pulse">
               טוען {loadedCount}/{nonAdminUnits.length}...
@@ -157,6 +163,9 @@ export default function CommandPage() {
               </button>
             ))}
           </div>
+          <button onClick={() => window.print()} className="btn bg-gold text-black border-none hover:bg-gold2 flex items-center gap-2">
+            🖨️ הפק PDF
+          </button>
           <button onClick={() => setBriefing(true)}
             className="btn text-xs px-3 py-2 bg-purple-900/40 border-purple-500/50 text-purple-300 hover:bg-purple-800/50">
             🖥 הערכת מצב
@@ -168,26 +177,26 @@ export default function CommandPage() {
 
       {/* Smart alerts */}
       {criticalAlerts.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2 print:border print:border-black print:p-2">
           {criticalAlerts.slice(0,3).map(a=>(
-            <div key={a.id} className="bg-red-900/20 border border-red-500/40 rounded-xl px-4 py-2.5 flex items-center gap-3">
+            <div key={a.id} className="bg-red-900/20 border border-red-500/40 rounded-xl px-4 py-2.5 flex items-center gap-3 print:bg-transparent print:border-none print:p-1">
               <span className="text-lg">{a.icon}</span>
-              <span className="text-red-200 text-sm font-bold flex-1">{a.text}</span>
-              <span className="badge badge-red text-[10px]">קריטי</span>
+              <span className="text-red-200 text-sm font-bold flex-1 print:text-black">{a.text}</span>
+              <span className="badge badge-red text-[10px] print:border print:border-black print:text-black">קריטי</span>
             </div>
           ))}
-          {criticalAlerts.length > 3 && <p className="text-red-400/70 text-xs text-center">ועוד {criticalAlerts.length-3} התראות — לחץ הערכת מצב לתמונה מלאה</p>}
+          {criticalAlerts.length > 3 && <p className="text-red-400/70 text-xs text-center print:text-black">ועוד {criticalAlerts.length-3} התראות — לחץ הערכת מצב לתמונה מלאה</p>}
         </div>
       )}
       {smartAlerts.filter(a=>a.level==='warning').length > 0 && criticalAlerts.length === 0 && (
-        <div className="bg-orange-900/15 border border-orange-500/30 rounded-xl px-4 py-2.5 flex items-center gap-3">
+        <div className="bg-orange-900/15 border border-orange-500/30 rounded-xl px-4 py-2.5 flex items-center gap-3 print:border print:border-black print:bg-transparent print:text-black">
           <span>⚠️</span>
-          <span className="text-orange-200 text-sm font-bold">{smartAlerts.filter(a=>a.level==='warning').length} אזהרות פעילות — לחץ הערכת מצב לפרטים</span>
+          <span className="text-orange-200 text-sm font-bold print:text-black">{smartAlerts.filter(a=>a.level==='warning').length} אזהרות פעילות — לחץ הערכת מצב לפרטים</span>
         </div>
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 print:gap-1">
         <KpiCard label="הכשרה ממוצעת" value={`${avgTrained}%`} color="green" />
         <KpiCard label="ניקיון ממוצע" value={`${avgClean}%`} color="blue" />
         <KpiCard label='ציוד חסר (סה"כ)' value={totalMissing} color="red" />
@@ -196,15 +205,15 @@ export default function CommandPage() {
 
       {/* TABLE VIEW */}
       {viewMode === 'table' && (
-        <div className="card overflow-hidden">
-          <div className="panel-head">
+        <div className="card overflow-hidden print:border print:border-black print:shadow-none">
+          <div className="panel-head print:bg-gray-200 print:text-black print:border-b print:border-black">
             <span className="panel-title">📋 כל היחידות — מבט פיקודי</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full tbl">
-              <thead><tr>
+            <table className="w-full tbl print:text-black">
+              <thead className="print:bg-gray-100"><tr>
                 <th>יחידה</th><th>מצב כללי</th><th>הכשרה</th>
-                <th>ניקיון</th><th>ציוד</th><th>חריגים</th><th>פעולה</th>
+                <th>ניקיון</th><th>ציוד</th><th>חריגים</th><th className="print:hidden">פעולה</th>
               </tr></thead>
               <tbody>
                 {nonAdminUnits.map(u => {
@@ -212,29 +221,29 @@ export default function CommandPage() {
                   const h = s.health || 'orange'
                   const isLoaded = !!unitStats[u.id]
                   return (
-                    <tr key={u.id}>
+                    <tr key={u.id} className="print:border-b print:border-gray-300">
                       <td>
                         <span className="font-black">{u.icon} {u.name}</span>
-                        <div className="text-xs text-text3">{u.brigade}</div>
+                        <div className="text-xs text-text3 print:text-gray-600">{u.brigade}</div>
                       </td>
                       <td>
                         {!isLoaded
-                          ? <span className="badge badge-dim text-[10px]">טוען...</span>
-                          : <span className={`badge ${h==='green'?'badge-green':h==='orange'?'badge-orange':'badge-red'}`}>{healthLabel[h]}</span>
+                          ? <span className="badge badge-dim text-[10px] print:border print:border-gray-400">טוען...</span>
+                          : <span className={`badge ${h==='green'?'badge-green':h==='orange'?'badge-orange':'badge-red'} print:border print:border-black print:bg-transparent print:text-black`}>{healthLabel[h]}</span>
                         }
                       </td>
                       <td>
                         <div className="flex items-center gap-2">
-                          <div className="pbar w-20">
+                          <div className="pbar w-20 print:hidden">
                             <div className="pbar-fill bg-green-500" style={{ width:`${s.trainedPct||0}%` }} />
                           </div>
-                          <span className="text-xs text-text3">{s.trainedPct||0}%</span>
+                          <span className="text-xs text-text3 font-bold print:text-black">{s.trainedPct||0}%</span>
                         </div>
                       </td>
-                      <td><span className={`badge ${(s.cleanPct||0)>=80?'badge-green':(s.cleanPct||0)>=50?'badge-orange':'badge-red'}`}>{s.cleanPct||0}%</span></td>
-                      <td><span className={`badge ${(s.equipMissing||0)===0?'badge-green':'badge-red'}`}>{(s.equipMissing||0)===0?'✓ תקין':'⚠ '+s.equipMissing+' חסרים'}</span></td>
-                      <td>{(s.openInc||0) > 0 ? <span className="badge badge-red">🆘 {s.openInc}</span> : <span className="text-text3 text-xs">—</span>}</td>
-                      <td><button className="btn btn-sm" onClick={()=>setTaskModal(true)}>📋 משימה</button></td>
+                      <td><span className={`badge ${(s.cleanPct||0)>=80?'badge-green':(s.cleanPct||0)>=50?'badge-orange':'badge-red'} print:border print:border-black print:bg-transparent print:text-black`}>{s.cleanPct||0}%</span></td>
+                      <td><span className={`badge ${(s.equipMissing||0)===0?'badge-green':'badge-red'} print:border print:border-black print:bg-transparent print:text-black`}>{(s.equipMissing||0)===0?'✓ תקין':'⚠ '+s.equipMissing+' חסרים'}</span></td>
+                      <td>{(s.openInc||0) > 0 ? <span className="badge badge-red print:border print:border-black print:bg-transparent print:text-black">🆘 {s.openInc}</span> : <span className="text-text3 text-xs print:text-gray-500">—</span>}</td>
+                      <td className="print:hidden"><button className="btn btn-sm" onClick={()=>setTaskModal(true)}>📋 משימה</button></td>
                     </tr>
                   )
                 })}
@@ -245,25 +254,24 @@ export default function CommandPage() {
       )}
 
       {/* MAP VIEW */}
-      {/* MAP VIEW — real Leaflet map */}
       {viewMode === 'map' && <MapView unitStats={unitStats} />}
 
       {/* COMPARE VIEW */}
       {viewMode === 'compare' && (
-        <div className="space-y-5">
+        <div className="space-y-5 print:space-y-2">
           {['חטמ"רים','חטיבות','אוגדות'].map(brigade => {
             const bUnits = nonAdminUnits.filter(u => u.brigade === brigade)
             if (bUnits.length === 0) return null
             return (
-              <div key={brigade} className="card overflow-hidden">
-                <div className="panel-head">
+              <div key={brigade} className="card overflow-hidden print:border print:border-black print:break-inside-avoid">
+                <div className="panel-head print:bg-gray-200 print:text-black">
                   <span className="panel-title font-black">{brigade} — השוואה</span>
-                  <span className="text-text3 text-xs">{bUnits.length} יחידות</span>
+                  <span className="text-text3 text-xs print:text-gray-600">{bUnits.length} יחידות</span>
                 </div>
-                <div className="p-4 space-y-5">
+                <div className="p-4 space-y-5 print:space-y-2">
                   {[{key:'trainedPct',label:'🎓 הכשרות'},{key:'cleanPct',label:'🧹 ניקיון'}].map(m => (
                     <div key={m.key}>
-                      <div className="text-xs font-bold text-text3 mb-2">{m.label}</div>
+                      <div className="text-xs font-bold text-text3 mb-2 print:text-black">{m.label}</div>
                       <div className="space-y-2">
                         {[...bUnits].sort((a,b)=>(unitStats[b.id]?.[m.key]||0)-(unitStats[a.id]?.[m.key]||0)).map(u => {
                           const val = unitStats[u.id]?.[m.key] || 0
@@ -271,36 +279,21 @@ export default function CommandPage() {
                           return (
                             <div key={u.id} className="flex items-center gap-3">
                               <span className="text-sm w-6">{u.icon}</span>
-                              <span className="text-xs font-bold text-text2 w-28 flex-shrink-0 truncate">{u.name}</span>
-                              <div className="flex-1 h-5 bg-bg3 rounded-full overflow-hidden border border-border1">
-                                <div className={`h-full rounded-full transition-all duration-500 flex items-center justify-end pr-1.5 ${color}`}
+                              <span className="text-xs font-bold text-text2 w-28 flex-shrink-0 truncate print:text-black">{u.name}</span>
+                              <div className="flex-1 h-5 bg-bg3 rounded-full overflow-hidden border border-border1 print:border-black print:bg-white">
+                                <div className={`h-full rounded-full transition-all duration-500 flex items-center justify-end pr-1.5 ${color} print:bg-gray-400`}
                                   style={{width:`${Math.max(val,3)}%`}}>
-                                  {val>=15 && <span className="text-[10px] font-black text-white">{val}%</span>}
+                                  {val>=15 && <span className="text-[10px] font-black text-white print:text-black">{val}%</span>}
                                 </div>
                               </div>
-                              {val<15 && <span className="text-xs font-black text-text2 w-8">{val}%</span>}
-                              {val<30 && <span className="badge badge-red text-[9px]">⚠</span>}
+                              {val<15 && <span className="text-xs font-black text-text2 w-8 print:text-black">{val}%</span>}
+                              {val<30 && <span className="badge badge-red text-[9px] print:hidden">⚠</span>}
                             </div>
                           )
                         })}
                       </div>
                     </div>
                   ))}
-                  <div>
-                    <div className="text-xs font-bold text-text3 mb-2">🆘 חריגים פתוחים</div>
-                    <div className="flex gap-2 flex-wrap">
-                      {bUnits.map(u => {
-                        const inc = unitStats[u.id]?.openInc || 0
-                        return (
-                          <div key={u.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs
-                            ${inc>0?'border-red-500/40 bg-red-900/15 text-red-300':'border-green-500/30 bg-green-900/10 text-green-400'}`}>
-                            <span>{u.icon}</span>
-                            <span className="font-bold">{inc>0?`${inc} חריג`:'✓ תקין'}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
                 </div>
               </div>
             )
@@ -309,7 +302,7 @@ export default function CommandPage() {
       )}
 
       {/* Dispatch log */}
-      <div className="card">
+      <div className="card print:hidden">
         <div className="panel-head">
           <span className="panel-title">📦 יומן ניפוקים</span>
           <button className="btn btn-sm" onClick={()=>setDispatchModal(true)}>+ ניפוק חדש</button>
