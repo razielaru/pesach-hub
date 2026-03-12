@@ -97,6 +97,84 @@ export default function CommandPage() {
     }
   }
 
+  async function exportPDF() {
+    const daysLeft = Math.max(0, Math.ceil((new Date('2026-04-02') - new Date()) / 86400000))
+    const date = new Date().toLocaleDateString('he-IL')
+    const rows = nonAdminUnits.map(u => {
+      const s = unitStats[u.id] || {}
+      return `<tr style="border-bottom:1px solid #333">
+        <td style="padding:8px;font-weight:bold">${u.icon||''} ${u.name}</td>
+        <td style="padding:8px;text-align:center;color:${s.trainedPct>=70?'#4ade80':'#f87171'}">${s.trainedPct||0}%</td>
+        <td style="padding:8px;text-align:center;color:${s.cleanPct>=70?'#4ade80':'#f87171'}">${s.cleanPct||0}%</td>
+        <td style="padding:8px;text-align:center;color:${s.equipMissing===0?'#4ade80':'#f87171'}">${s.equipMissing||0}</td>
+        <td style="padding:8px;text-align:center;color:${s.openInc===0?'#4ade80':'#f87171'}">${s.openInc||0}</td>
+        <td style="padding:8px;text-align:center"><span style="padding:2px 8px;border-radius:4px;background:${s.health==='green'?'#166534':s.health==='orange'?'#7c2d12':'#7f1d1d'};color:${s.health==='green'?'#4ade80':s.health==='orange'?'#fb923c':'#f87171'}">${s.health==='green'?'תקין':s.health==='orange'?'דורש תשומת לב':'קריטי'}</span></td>
+      </tr>`
+    }).join('')
+
+    const totals = Object.values(unitStats)
+    const avgTrained = totals.length ? Math.round(totals.reduce((a,s)=>a+s.trainedPct,0)/totals.length) : 0
+    const avgClean = totals.length ? Math.round(totals.reduce((a,s)=>a+s.cleanPct,0)/totals.length) : 0
+    const totalMissing = totals.reduce((a,s)=>a+s.equipMissing,0)
+    const totalInc = totals.reduce((a,s)=>a+s.openInc,0)
+    const readiness = Math.round((avgTrained*0.35 + avgClean*0.25 + (totalMissing===0?100:Math.max(0,100-totalMissing*10))*0.2 + (totalInc===0?100:Math.max(0,100-totalInc*20))*0.2))
+
+    const html = `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head><meta charset="UTF-8"><title>דוח מצב פסח — ${date}</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#111; color:#e0e0e0; padding:40px; direction:rtl; }
+  h1 { color:#f5c842; border-bottom:2px solid #f5c842; padding-bottom:10px; }
+  h2 { color:#a0aec0; margin-top:30px; }
+  table { width:100%; border-collapse:collapse; background:#1a1a2e; border-radius:8px; overflow:hidden; }
+  th { background:#1e3a5f; padding:10px 8px; color:#93c5fd; font-weight:bold; }
+  .kpi { display:flex; gap:20px; flex-wrap:wrap; margin:20px 0; }
+  .kpi-box { background:#1a1a2e; border:1px solid #333; border-radius:8px; padding:16px 24px; text-align:center; min-width:120px; }
+  .kpi-val { font-size:2em; font-weight:bold; color:#f5c842; }
+  .kpi-lbl { color:#888; font-size:0.85em; margin-top:4px; }
+  .readiness { font-size:3em; font-weight:bold; color:${readiness>=80?'#4ade80':readiness>=60?'#fb923c':'#f87171'}; }
+  @media print { body { background:white; color:black; } }
+</style></head>
+<body>
+<h1>⭐ דוח מצב פסח — רבנות פיקוד מרכז</h1>
+<p style="color:#888">תאריך: ${date} | ${daysLeft} ימים לפסח | מבצע פסח תשפ"ו</p>
+
+<h2>📊 מדד מוכנות כולל</h2>
+<div style="text-align:center;margin:20px 0">
+  <div class="readiness">${readiness}%</div>
+  <div style="color:#888;margin-top:8px">מוכנות לפסח</div>
+  <div style="background:#222;border-radius:20px;height:20px;margin:16px auto;max-width:400px">
+    <div style="background:${readiness>=80?'#4ade80':readiness>=60?'#fb923c':'#f87171'};height:100%;border-radius:20px;width:${readiness}%"></div>
+  </div>
+</div>
+
+<h2>🔢 סיכום מפקד</h2>
+<div class="kpi">
+  <div class="kpi-box"><div class="kpi-val">${avgTrained}%</div><div class="kpi-lbl">הכשרה ממוצעת</div></div>
+  <div class="kpi-box"><div class="kpi-val">${avgClean}%</div><div class="kpi-lbl">ניקיון ממוצע</div></div>
+  <div class="kpi-box"><div class="kpi-val" style="color:${totalMissing===0?'#4ade80':'#f87171'}">${totalMissing}</div><div class="kpi-lbl">פריטי ציוד חסרים</div></div>
+  <div class="kpi-box"><div class="kpi-val" style="color:${totalInc===0?'#4ade80':'#f87171'}">${totalInc}</div><div class="kpi-lbl">חריגים פתוחים</div></div>
+</div>
+
+<h2>📋 מצב יחידות</h2>
+<table>
+  <thead><tr>
+    <th>יחידה</th><th>הכשרה</th><th>ניקיון</th><th>ציוד חסר</th><th>חריגים</th><th>מצב</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+
+<p style="color:#555;font-size:0.8em;margin-top:40px;border-top:1px solid #333;padding-top:10px">
+  דוח זה הופק אוטומטית ממערכת pesach-hub | רבנות פיקוד מרכז
+</p>
+</body></html>`
+
+    const win = window.open('', '_blank')
+    win.document.write(html)
+    win.document.close()
+    setTimeout(() => win.print(), 500)
+  }
+
   // Aggregates
   const totals = Object.values(unitStats)
   const avgTrained = totals.length ? Math.round(totals.reduce((a,s)=>a+s.trainedPct,0)/totals.length) : 0
@@ -135,6 +213,10 @@ export default function CommandPage() {
           </button>
           <button className="btn btn-blue btn-sm" onClick={()=>setTaskModal(true)}>📋 שלח משימה</button>
           <button className="btn btn-sm" onClick={()=>setDispatchModal(true)}>📦 ניפוק ציוד</button>
+          <button onClick={exportPDF}
+            className="btn btn-sm bg-green-900/30 border-green-500/40 text-green-400 hover:bg-green-800/40">
+            📄 ייצא PDF
+          </button>
         </div>
       </div>
 
