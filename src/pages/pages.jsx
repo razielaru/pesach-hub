@@ -298,13 +298,41 @@ export function UnitManagePage() {
     setUnits(data || [])
   }
 
+  // פונקציית ההעלאה החדשה - עובדת מול Supabase Storage
   async function uploadLogo(unitId, file) {
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      await supabase.from('units').update({ logo_url: e.target.result }).eq('id', unitId)
-      showToast('לוגו עודכן ✅','green'); load()
+    try {
+      showToast('מעלה לוגו...', 'gold');
+      
+      // 1. יצירת שם ייחודי לקובץ כדי למנוע דריסות
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${unitId}-${Date.now()}.${fileExt}`;
+      
+      // 2. העלאה ל-Storage בתוך התיקייה 'logos'
+      const { error: uploadError } = await supabase.storage
+        .from('logos')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      // 3. קבלת הקישור הציבורי של התמונה
+      const { data: { publicUrl } } = supabase.storage
+        .from('logos')
+        .getPublicUrl(fileName);
+
+      // 4. עדכון טבלת היחידות עם הקישור הקצר
+      const { error: updateError } = await supabase
+        .from('units')
+        .update({ logo_url: publicUrl })
+        .eq('id', unitId);
+
+      if (updateError) throw updateError;
+
+      showToast('לוגו עודכן בהצלחה! ✅', 'green');
+      load();
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      showToast('שגיאה בהעלאת הלוגו', 'red');
     }
-    reader.readAsDataURL(file)
   }
 
   async function savePin() {
