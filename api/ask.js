@@ -25,8 +25,8 @@ ${HALACHA_SUMMARY}
 אם יש ספק הלכתי או מקרה חריג — המלץ לפנות לרב היחידה.`;
 
     // המודל החדש והסופר-חכם מתוך הרשימה שלך!
-    const targetModel = "gemini-2.5-pro";
-
+const targetModel = "gemini-2.5-flash";
+    
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
