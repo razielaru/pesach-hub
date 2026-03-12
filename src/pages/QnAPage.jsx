@@ -284,16 +284,17 @@ export default function QnAPage() {
     showToast('תשובה נשמרה ✅','green'); setAnswerModal(null); setAnswerText(''); load()
   }
 
-  // כאן הוספנו את הטאב של ניהול הספר
   const myPending  = questions.filter(q=>!q.answer)
   const myAnswered = questions.filter(q=>q.answer)
+  
+  // כאן הוספנו את הטאב של ניהול הספר לצד הסרטונים וה-AI
   const allTabs = [
     {id:'questions', label:`❓ שאלות שלי (${myPending.length})`},
     {id:'faq',       label:'📚 מאגר הלכה'},
     ...(isAdmin||isSenior?[{id:'all',label:`📋 כל השאלות (${globalQ.length})`}]:[]),
     {id:'ai',        label:'🤖 רב AI'},
     {id:'videos',    label:'🎥 סרטונים'},
-    ...(isAdmin||isSenior?[{id:'book_manage',label:'⚖️ ספר הכשרות'}]:[])
+    ...(isAdmin||isSenior?[{id:'book_manage',label:'⚖️ ניהול ספר הכשרות'}]:[])
   ]
 
   return (
@@ -315,7 +316,7 @@ export default function QnAPage() {
         {allTabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`ftab ${tab===t.id?'active':''}`}>{t.label}</button>)}
       </div>
 
-      {/* הטאב החדש לניהול הספר */}
+      {/* התוכן של הטאב החדש: ניהול ספר הכשרות */}
       {tab==='book_manage' && (isAdmin || isSenior) && (
         <div className="card p-5 space-y-4 border-gold/30 bg-gold/5">
           <div className="flex items-center gap-3 border-b border-border1 pb-4">
