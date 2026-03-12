@@ -7,15 +7,25 @@ export default async function handler(req) {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
 
   if (!process.env.GEMINI_API_KEY) {
-    return new Response(JSON.stringify({ text: "❌ שגיאה: מפתח ה-API לא מוגדר ב-Vercel." }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ text: "❌ שגיאה: מפתח ה-API לא מוגדר." }), { headers: { "Content-Type": "application/json" } });
   }
 
   try {
     const { messages, systemPrompt } = await req.json();
 
-    const enhancedSystemPrompt = `${systemPrompt}\n=== קטע ספר ===\n${HALACHA_SUMMARY}\n=== סוף ===`;
+    const enhancedSystemPrompt = `${systemPrompt}
 
-    const targetModel = "gemini-1.5-pro"; 
+=== קטע מספר ההכשרות הצבאי (פסח תשפ"ו) ===
+${HALACHA_SUMMARY}
+=== סוף הקטע ===
+
+הנחיות:
+ענה בעברית קצרה, ברורה ומקצועית.
+אם השאלה מחוץ להלכות פסח או כשרות — ציין זאת מיד ואל תמציא הלכות.
+אם יש ספק הלכתי או מקרה חריג — המלץ לפנות לרב היחידה.`;
+
+    // המודל החדש והסופר-חכם מתוך הרשימה שלך!
+    const targetModel = "gemini-2.5-pro";
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -28,31 +38,22 @@ export default async function handler(req) {
             role: m.role === "assistant" ? "model" : "user",
             parts: [{ text: m.content }]
           })),
-          generationConfig: { temperature: 0.1 }
+          generationConfig: { temperature: 0.1 } // שומר עליו ממוקד ולא יצירתי מדי
         })
       }
     );
 
     if (!response.ok) {
-      if (response.status === 404) {
-        // המודל לא נמצא - מושכים את הרשימה ומדפיסים אותה כטקסט בתוך הצ'אט!
-        const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
-        const listData = await listRes.json();
-        const models = listData.models ? listData.models.map(m => m.name.replace('models/', '')).filter(m => m.includes('gemini')).join('\n') : "לא הצלחתי למשוך רשימה";
-        
-        return new Response(JSON.stringify({ 
-          text: `❌ המודל ${targetModel} לא מאושר במפתח הזה.\n\nהנה המודלים שכן זמינים לך (צלם לי את זה):\n${models}` 
-        }), { headers: { "Content-Type": "application/json" } });
-      }
-      
       const err = await response.text();
-      return new Response(JSON.stringify({ text: `❌ שגיאת גוגל כללית:\n${err}` }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ text: `❌ שגיאה בחיבור למודל:\n${err}` }), { headers: { "Content-Type": "application/json" } });
     }
 
     const data = await response.json();
-    return new Response(JSON.stringify({ text: data.candidates[0].content.parts[0].text }), { headers: { "Content-Type": "application/json" } });
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    return new Response(JSON.stringify({ text }), { headers: { "Content-Type": "application/json" } });
 
   } catch (error) {
-    return new Response(JSON.stringify({ text: `❌ קריסת שרת פנימית:\n${error.message}` }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ text: `❌ שגיאת שרת:\n${error.message}` }), { headers: { "Content-Type": "application/json" } });
   }
 }
