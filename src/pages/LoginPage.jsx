@@ -3,30 +3,36 @@ import { UNITS, BRIGADES } from '../lib/units'
 import { useStore } from '../store/useStore'
 import { supabase } from '../lib/supabase'
 
+// Cache גלובלי — נשמר בזיכרון כל עוד הדף פתוח
+const LOGIN_CACHE = { logos: null, loaded: false }
+
 export default function LoginPage() {
   const setUnit = useStore(s => s.setUnit)
   const [pinTarget, setPinTarget] = useState(null)
   const [pinVal, setPinVal] = useState('')
   const [pinError, setPinError] = useState('')
-  const [unitLogos, setUnitLogos] = useState({}) // id -> logo_url
+  const [unitLogos, setUnitLogos] = useState(LOGIN_CACHE.logos || {})
 
   const pesach = new Date('2026-04-02')
   const days = Math.max(0, Math.ceil((pesach - new Date()) / 86400000))
 
   useEffect(() => {
-    // Load logos + pins from Supabase
+    // אם כבר טענו — לא טוענים שוב
+    if (LOGIN_CACHE.loaded) return
     supabase.from('units').select('id,logo_url,pin').then(({ data }) => {
       if (!data) return
       const logos = {}
       data.forEach(u => { if (u.logo_url) logos[u.id] = u.logo_url })
+      LOGIN_CACHE.logos = logos
+      LOGIN_CACHE.loaded = true
       setUnitLogos(logos)
-      // Also update in-memory pins from DB
       data.forEach(row => {
         const u = UNITS.find(x => x.id === row.id)
         if (u && row.pin !== undefined) u.pin = row.pin
       })
     })
   }, [])
+
 
   function handleUnitClick(unit) {
     if (unit.pin) {

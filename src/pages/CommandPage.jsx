@@ -21,36 +21,7 @@ export default function CommandPage() {
 
   const nonAdminUnits = UNITS.filter(u => !u.is_admin)
 
-  useEffect(() => { loadAll() }, [])
-
-  async function loadAll() {
-    const results = {}
-    await Promise.all(nonAdminUnits.map(async (u) => {
-      const [pers, equip, areas, inc] = await Promise.all([
-        supabase.from('personnel').select('training_status,status').eq('unit_id', u.id),
-        supabase.from('equipment').select('have,need').eq('unit_id', u.id),
-        supabase.from('cleaning_areas').select('status').eq('unit_id', u.id),
-        supabase.from('incidents').select('id').eq('unit_id', u.id).eq('status','open'),
-      ])
-      const p = pers.data || []
-      const e = equip.data || []
-      const a = areas.data || []
-      const trainedPct = p.length ? Math.round(p.filter(x=>x.training_status==='done').length/p.length*100) : 0
-      const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
-      const equipMissing = e.filter(x=>x.have<x.need).length
-      const openInc = (inc.data||[]).length
-      // Overall health: green=all ok, orange=some issues, red=critical
-      let health = 'green'
-      if (openInc > 0 || equipMissing > 2) health = 'red'
-      else if (trainedPct < 70 || cleanPct < 50 || equipMissing > 0) health = 'orange'
-      results[u.id] = { trainedPct, cleanPct, equipMissing, openInc, total: p.length, health,
-        available: p.filter(x=>x.status==='available').length }
-    }))
-    const { data: dl } = await supabase.from('dispatch_log').select('*').order('created_at',{ascending:false}).limit(10)
-    setDispLog(dl || [])
-    setUnitStats(results)
-    setLoading(false)
-  }
+  useEffect(() => { loadAll() }, [])\n\n  async function loadAll() {\n    // במקום 60 queries — רק 4 queries על כל הנתונים ביחד\n    const [persRes, equipRes, areasRes, incRes, dlRes] = await Promise.all([\n      supabase.from('personnel').select('unit_id,training_status,status'),\n      supabase.from('equipment').select('unit_id,have,need'),\n      supabase.from('cleaning_areas').select('unit_id,status'),\n      supabase.from('incidents').select('unit_id,id').eq('status','open'),\n      supabase.from('dispatch_log').select('*').order('created_at',{ascending:false}).limit(10),\n    ])\n\n    const pers  = persRes.data  || []\n    const equip = equipRes.data || []\n    const areas = areasRes.data || []\n    const incs  = incRes.data   || []\n\n    const results = {}\n    nonAdminUnits.forEach(u => {\n      const p = pers.filter(x => x.unit_id === u.id)\n      const e = equip.filter(x => x.unit_id === u.id)\n      const a = areas.filter(x => x.unit_id === u.id)\n      const trainedPct = p.length ? Math.round(p.filter(x=>x.training_status==='done').length/p.length*100) : 0\n      const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0\n      const equipMissing = e.filter(x=>x.have<x.need).length\n      const openInc = incs.filter(x => x.unit_id === u.id).length\n      let health = 'green'\n      if (openInc > 0 || equipMissing > 2) health = 'red'\n      else if (trainedPct < 70 || cleanPct < 50 || equipMissing > 0) health = 'orange'\n      results[u.id] = { trainedPct, cleanPct, equipMissing, openInc, total: p.length, health,\n        available: p.filter(x=>x.status==='available').length }\n    })\n\n    setDispLog(dlRes.data || [])\n    setUnitStats(results)\n    setLoading(false)\n  }
 
   async function sendTask() {
     if (!taskForm.title) return
