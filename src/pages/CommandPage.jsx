@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import supabase from '../supabaseClient' // <--- ודא שזה הנתיב הנכון אצלך!
+import supabase from '../supabaseClient'
 import { useStore } from '../store/useStore'
 import { UNITS } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
@@ -116,7 +116,9 @@ export default function CommandPage() {
   const totalInc = totals.reduce((a,s)=>a+s.openInc,0)
   const avgClean = totals.length ? Math.round(totals.reduce((a,s)=>a+s.cleanPct,0)/totals.length) : 0
   const daysLeft = Math.max(0, Math.ceil((new Date('2026-04-02') - new Date()) / 86400000))
-  const smartAlerts = useSmartAlerts(unitStats, daysLeft)
+  
+  // הגנה מפני קריסה אם useSmartAlerts לא מחזיר מערך תקין
+  const smartAlerts = useSmartAlerts(unitStats, daysLeft) || []
   const criticalAlerts = smartAlerts.filter(a => a.level === 'critical')
 
   const healthColor = { green: 'border-green-500 bg-green-900/10', orange: 'border-orange-500 bg-orange-900/10', red: 'border-red-500 bg-red-900/10 animate-pulse' }
