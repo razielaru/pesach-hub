@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import KpiCard from '../components/UI/KpiCard'
+import KpiCard from '../components/ui/KpiCard'
 
 export default function Dashboard() {
   const { currentUnit, setPage } = useStore()
