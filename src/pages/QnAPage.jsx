@@ -4,12 +4,156 @@ import { useStore } from '../store/useStore'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 
 const CATEGORIES = ['כשרות','הגעלה','ניקיון','בדיקת חמץ','הסדר','כללי']
+const VIDEO_CATEGORIES = ['כשרות','פסח','שבת','תפילה','כללי']
 
+// ─── VIDEOS TAB ───────────────────────────────────────────────────────────────
+function VideosTab() {
+  const { currentUnit, isAdmin, isSenior, showToast } = useStore()
+  const [videos, setVideos] = useState([])
+  const [modal, setModal] = useState(false)
+  const [playing, setPlaying] = useState(null)
+  const [filterCat, setFilterCat] = useState('הכל')
+  const [form, setForm] = useState({ title:'', url:'', category:'כשרות', description:'' })
+  const canEdit = isAdmin || isSenior
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    const { data } = await supabase.from('training_videos').select('*').order('created_at', { ascending: false })
+    setVideos(data || [])
+  }
+
+  function getYoutubeId(url) {
+    const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^?&\n]+)/)
+    return m ? m[1] : null
+  }
+
+  async function addVideo() {
+    if (!form.title || !form.url) return
+    const ytId = getYoutubeId(form.url)
+    if (!ytId) { showToast('קישור יוטיוב לא תקין', 'red'); return }
+    await supabase.from('training_videos').insert({
+      title: form.title, url: form.url, youtube_id: ytId,
+      category: form.category, description: form.description,
+      added_by: currentUnit?.name, is_global: true,
+    })
+    showToast('סרטון נוסף ✅', 'green')
+    setModal(false); setForm({ title:'', url:'', category:'כשרות', description:'' }); load()
+  }
+
+  async function deleteVideo(id) {
+    if (!confirm('למחוק סרטון זה?')) return
+    await supabase.from('training_videos').delete().eq('id', id)
+    showToast('סרטון נמחק', 'red'); load()
+  }
+
+  const filtered = filterCat === 'הכל' ? videos : videos.filter(v => v.category === filterCat)
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {['הכל', ...VIDEO_CATEGORIES].map(c => (
+            <button key={c} onClick={() => setFilterCat(c)}
+              className={`ftab ${filterCat === c ? 'active' : ''}`}>{c}</button>
+          ))}
+        </div>
+        {canEdit && (
+          <button className="btn btn-blue btn-sm" onClick={() => setModal(true)}>+ הוסף סרטון</button>
+        )}
+      </div>
+
+      {/* Playing embed */}
+      {playing && (
+        <div className="card overflow-hidden">
+          <div className="panel-head">
+            <span className="panel-title">▶ {playing.title}</span>
+            <button onClick={() => setPlaying(null)} className="text-text3 hover:text-text1">✕ סגור</button>
+          </div>
+          <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+            <iframe
+              className="absolute inset-0 w-full h-full"
+              src={`https://www.youtube.com/embed/${playing.youtube_id}?autoplay=1`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen title={playing.title} />
+          </div>
+        </div>
+      )}
+
+      {/* Grid */}
+      {filtered.length === 0 && (
+        <div className="card p-10 text-center text-text3">
+          {canEdit ? 'אין סרטונים עדיין — לחץ "+ הוסף סרטון"' : 'אין סרטונים בקטגוריה זו'}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        {filtered.map(v => (
+          <div key={v.id} className="card overflow-hidden group">
+            <div className="relative cursor-pointer" onClick={() => setPlaying(v)}>
+              <img
+                src={`https://img.youtube.com/vi/${v.youtube_id}/hqdefault.jpg`}
+                alt={v.title}
+                className="w-full aspect-video object-cover"
+                onError={e => { e.target.src = 'https://placehold.co/320x180/1a1a2e/gold?text=▶' }}
+              />
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="w-14 h-14 rounded-full bg-red-600/90 flex items-center justify-center text-2xl text-white shadow-xl">▶</div>
+              </div>
+              <span className="absolute top-2 right-2 badge badge-gold text-[10px]">{v.category}</span>
+            </div>
+            <div className="p-3">
+              <div className="font-bold text-sm mb-1 line-clamp-2">{v.title}</div>
+              {v.description && <div className="text-text3 text-xs mb-2 line-clamp-2">{v.description}</div>}
+              <div className="flex items-center justify-between">
+                <button onClick={() => setPlaying(v)}
+                  className="btn btn-sm text-xs">▶ צפה</button>
+                {canEdit && (
+                  <button onClick={() => deleteVideo(v.id)}
+                    className="text-red-400/50 hover:text-red-400 text-xs transition-colors">🗑 מחק</button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Modal open={modal} onClose={() => setModal(false)} title="🎥 הוספת סרטון הכשרה">
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-text3 font-bold block mb-1">כותרת *</label>
+            <input className="form-input" placeholder="לדוגמה: הגעלת כלים לפסח"
+              value={form.title} onChange={e => setForm(f => ({...f, title: e.target.value}))} />
+          </div>
+          <div>
+            <label className="text-xs text-text3 font-bold block mb-1">קישור יוטיוב *</label>
+            <input className="form-input" placeholder="https://youtube.com/watch?v=..."
+              value={form.url} onChange={e => setForm(f => ({...f, url: e.target.value}))} dir="ltr" />
+          </div>
+          <div>
+            <label className="text-xs text-text3 font-bold block mb-1">קטגוריה</label>
+            <select className="form-input" value={form.category}
+              onChange={e => setForm(f => ({...f, category: e.target.value}))}>
+              {VIDEO_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-text3 font-bold block mb-1">תיאור קצר (אופציונלי)</label>
+            <input className="form-input" placeholder="על מה הסרטון?"
+              value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} />
+          </div>
+        </div>
+        <ModalButtons onClose={() => setModal(false)} onSave={addVideo} saveLabel="➕ הוסף סרטון" />
+      </Modal>
+    </div>
+  )
+}
+
+// ─── MAIN QnAPage ─────────────────────────────────────────────────────────────
 export default function QnAPage() {
   const { currentUnit, isAdmin, isSenior, showToast } = useStore()
   const [questions, setQuestions] = useState([])
   const [faqs, setFaqs] = useState([])
-  const [globalQ, setGlobalQ] = useState([]) // questions from all units
+  const [globalQ, setGlobalQ] = useState([])
   const [modal, setModal] = useState(false)
   const [answerModal, setAnswerModal] = useState(null)
   const [form, setForm] = useState({ question:'', category:'כשרות', is_global: false })
@@ -21,18 +165,14 @@ export default function QnAPage() {
 
   async function load() {
     const [q, f, gq, book] = await Promise.all([
-      // My unit's questions
       supabase.from('qna').select('*').eq('unit_id', currentUnit.id)
         .eq('is_faq', false).neq('question','__training_book__').order('created_at',{ascending:false}),
-      // FAQ - visible to all
       supabase.from('qna').select('*').eq('is_faq', true)
         .neq('question','__training_book__').order('created_at',{ascending:false}),
-      // Global questions (is_global) from all units - visible to admin/senior
       (isAdmin || isSenior)
         ? supabase.from('qna').select('*').eq('is_faq', false)
             .neq('question','__training_book__').order('created_at',{ascending:false})
         : Promise.resolve({ data: [] }),
-      // Training book
       supabase.from('qna').select('answer').eq('question','__training_book__').single(),
     ])
     setQuestions(q.data || [])
@@ -43,9 +183,7 @@ export default function QnAPage() {
 
   async function askQuestion() {
     if (!form.question) return
-    await supabase.from('qna').insert({
-      unit_id: currentUnit.id, ...form, is_faq: false
-    })
+    await supabase.from('qna').insert({ unit_id: currentUnit.id, ...form, is_faq: false })
     showToast('שאלה נשלחה ✅', 'green')
     setModal(false)
     setForm({ question:'', category:'כשרות', is_global: false })
@@ -67,15 +205,24 @@ export default function QnAPage() {
   const myPending = questions.filter(q => !q.answer)
   const myAnswered = questions.filter(q => q.answer)
 
+  const allTabs = [
+    { id: 'questions', label: `❓ שאלות שלי (${myPending.length})` },
+    { id: 'faq',       label: '📚 מאגר הלכה (FAQ)' },
+    ...(isAdmin || isSenior ? [{ id: 'all', label: `📋 כל השאלות (${globalQ.length})` }] : []),
+    { id: 'videos',    label: '🎥 סרטוני הכשרה' },
+  ]
+
   return (
     <div className="space-y-5">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-black">⚖️ חמ"ל הלכתי — שו"ת</h2>
-        <button className="btn" onClick={()=>setModal(true)}>+ שאל שאלה</button>
+        {tab !== 'videos' && (
+          <button className="btn" onClick={() => setModal(true)}>+ שאל שאלה</button>
+        )}
       </div>
 
       {/* Training book */}
-      {bookUrl && (
+      {bookUrl && tab !== 'videos' && (
         <a href={bookUrl} target="_blank" rel="noreferrer"
           className="card p-4 flex items-center gap-3 border-blue-500/30 bg-blue-900/10 hover:border-blue-400/60 transition-all cursor-pointer no-underline block">
           <span className="text-3xl">📚</span>
@@ -89,13 +236,9 @@ export default function QnAPage() {
 
       {/* Tabs */}
       <div className="flex gap-2 flex-wrap">
-        {[
-          ['questions', `❓ שאלות שלי (${myPending.length})`],
-          ['faq', '📚 מאגר הלכה (FAQ)'],
-          ...(isAdmin || isSenior ? [['all', `📋 כל השאלות (${globalQ.length})`]] : []),
-        ].map(([k,l]) => (
-          <button key={k} onClick={()=>setTab(k)}
-            className={`ftab ${tab===k?'active':''}`}>{l}</button>
+        {allTabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`ftab ${tab === t.id ? 'active' : ''}`}>{t.label}</button>
         ))}
       </div>
 
@@ -106,7 +249,7 @@ export default function QnAPage() {
             <div className="card p-10 text-center text-text3">אין שאלות עדיין</div>}
           {[...myPending, ...myAnswered].map(q => (
             <QuestionCard key={q.id} q={q} canAnswer={isAdmin||isSenior}
-              onAnswer={()=>{setAnswerModal(q);setAnswerText('')}} />
+              onAnswer={() => { setAnswerModal(q); setAnswerText('') }} />
           ))}
         </div>
       )}
@@ -116,7 +259,7 @@ export default function QnAPage() {
         <div className="space-y-3">
           {faqs.length === 0 && <div className="card p-10 text-center text-text3">אין שאלות ב-FAQ עדיין</div>}
           {CATEGORIES.map(cat => {
-            const catFaqs = faqs.filter(f=>f.category===cat)
+            const catFaqs = faqs.filter(f => f.category === cat)
             if (!catFaqs.length) return null
             return (
               <div key={cat} className="card">
@@ -131,23 +274,26 @@ export default function QnAPage() {
       )}
 
       {/* All questions (admin) */}
-      {tab === 'all' && (isAdmin||isSenior) && (
+      {tab === 'all' && (isAdmin || isSenior) && (
         <div className="space-y-3">
-          {globalQ.filter(q=>q.question!=='__training_book__').map(q => (
+          {globalQ.filter(q => q.question !== '__training_book__').map(q => (
             <QuestionCard key={q.id} q={q} canAnswer={true}
-              onAnswer={()=>{setAnswerModal(q);setAnswerText(q.answer||'')}} />
+              onAnswer={() => { setAnswerModal(q); setAnswerText(q.answer || '') }} />
           ))}
         </div>
       )}
 
+      {/* Videos tab */}
+      {tab === 'videos' && <VideosTab />}
+
       {/* Ask Modal */}
-      <Modal open={modal} onClose={()=>setModal(false)} title="❓ שאלה הלכתית">
+      <Modal open={modal} onClose={() => setModal(false)} title="❓ שאלה הלכתית">
         <div className="space-y-3">
           <div>
             <label className="text-xs text-text3 font-bold block mb-1">נושא</label>
             <select className="form-input" value={form.category}
-              onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
-              {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+              onChange={e => setForm(f => ({...f, category: e.target.value}))}>
+              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div>
@@ -155,20 +301,20 @@ export default function QnAPage() {
             <textarea className="form-input h-28 resize-none"
               placeholder="פרט את השאלה בצורה ברורה..."
               value={form.question}
-              onChange={e=>setForm(f=>({...f,question:e.target.value}))} />
+              onChange={e => setForm(f => ({...f, question: e.target.value}))} />
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.is_global}
-              onChange={e=>setForm(f=>({...f,is_global:e.target.checked}))}
+              onChange={e => setForm(f => ({...f, is_global: e.target.checked}))}
               className="w-4 h-4 accent-gold" />
             <span className="text-sm text-text2">שאלה גלויה לכל היחידות</span>
           </label>
         </div>
-        <ModalButtons onClose={()=>setModal(false)} onSave={askQuestion} saveLabel="📤 שלח שאלה" />
+        <ModalButtons onClose={() => setModal(false)} onSave={askQuestion} saveLabel="📤 שלח שאלה" />
       </Modal>
 
       {/* Answer Modal */}
-      <Modal open={!!answerModal} onClose={()=>setAnswerModal(null)} title="✍️ מענה הלכתי">
+      <Modal open={!!answerModal} onClose={() => setAnswerModal(null)} title="✍️ מענה הלכתי">
         {answerModal && (
           <div className="space-y-3">
             <div className="bg-bg3 rounded-lg p-3 text-sm">
@@ -179,12 +325,12 @@ export default function QnAPage() {
               <textarea className="form-input h-32 resize-none"
                 placeholder="כתוב את הפסיקה..."
                 value={answerText}
-                onChange={e=>setAnswerText(e.target.value)} />
+                onChange={e => setAnswerText(e.target.value)} />
             </div>
             <p className="text-text3 text-xs">* התשובה תועבר אוטומטית ל-FAQ ותהיה גלויה לכל היחידות</p>
           </div>
         )}
-        <ModalButtons onClose={()=>setAnswerModal(null)} onSave={saveAnswer}
+        <ModalButtons onClose={() => setAnswerModal(null)} onSave={saveAnswer}
           saveLabel="✅ אשר פסיקה" saveClass="btn-green" />
       </Modal>
     </div>
