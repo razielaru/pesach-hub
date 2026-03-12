@@ -24,11 +24,11 @@ ${HALACHA_SUMMARY}
 אם השאלה מחוץ להלכות פסח או כשרות — ציין זאת מיד ואל תמציא הלכות.
 אם יש ספק הלכתי או מקרה חריג — המלץ לפנות לרב היחידה.`;
 
-    // המודל החדש והסופר-חכם מתוך הרשימה שלך!
-const targetModel = "gemini-2.5-flash";
+    const targetModel = "gemini-2.5-flash";
     
+    // שינוי הכתובת ל-streamGenerateContent כדי לקבל זרם של מילים
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,7 +38,7 @@ const targetModel = "gemini-2.5-flash";
             role: m.role === "assistant" ? "model" : "user",
             parts: [{ text: m.content }]
           })),
-          generationConfig: { temperature: 0.1 } // שומר עליו ממוקד ולא יצירתי מדי
+          generationConfig: { temperature: 0.1 }
         })
       }
     );
@@ -48,10 +48,14 @@ const targetModel = "gemini-2.5-flash";
       return new Response(JSON.stringify({ text: `❌ שגיאה בחיבור למודל:\n${err}` }), { headers: { "Content-Type": "application/json" } });
     }
 
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    return new Response(JSON.stringify({ text }), { headers: { "Content-Type": "application/json" } });
+    // הזרמת התשובה (Stream) ישירות לדפדפן בזמן אמת!
+    return new Response(response.body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
 
   } catch (error) {
     return new Response(JSON.stringify({ text: `❌ שגיאת שרת:\n${error.message}` }), { headers: { "Content-Type": "application/json" } });
