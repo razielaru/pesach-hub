@@ -58,9 +58,7 @@ export default function QnAPage() {
 
   async function askQuestion() {
     if (!form.question) return
-    await supabase.from('qna').insert({
-      unit_id: currentUnit.id, ...form, is_faq: false
-    })
+    await supabase.from('qna').insert({ unit_id: currentUnit.id, ...form, is_faq: false })
     showToast('שאלה נשלחה ✅', 'green')
     setModal(false)
     setForm({ question:'', category:'כשרות', is_global: false })
@@ -70,10 +68,8 @@ export default function QnAPage() {
   async function saveAnswer() {
     if (!answerText) return
     await supabase.from('qna').update({
-      answer: answerText,
-      answered_by: currentUnit?.name,
-      answered_at: new Date().toISOString(),
-      is_faq: true,
+      answer: answerText, answered_by: currentUnit?.name,
+      answered_at: new Date().toISOString(), is_faq: true,
     }).eq('id', answerModal.id)
     showToast('תשובה נשמרה ועברה ל-FAQ ✅', 'green')
     setAnswerModal(null); setAnswerText(''); load()
@@ -82,14 +78,12 @@ export default function QnAPage() {
   const myPending = questions.filter(q => !q.answer)
   const myAnswered = questions.filter(q => q.answer)
 
-  // הפונקציה המשודרגת שיוצרת את אפקט ההקלדה (Streaming)
   async function askAI(text) {
     if (!text.trim() || aiLoading) return
-    
     const userMsg = { role: 'user', content: text }
     const newMsgs = [...aiMessages, userMsg]
     
-    // מוסיפים מיד בועה ריקה עבור התשובה של הרב שתתחיל להתמלא
+    // בועה ריקה שמתחילה להתמלא
     setAiMessages([...newMsgs, { role: 'assistant', content: '' }])
     setAiInput('')
     setAiLoading(true)
@@ -105,22 +99,16 @@ export default function QnAPage() {
         })
       })
 
-      // אם יש שגיאה רגילה מהשרת (JSON)
       const contentType = res.headers.get('content-type') || ''
       if (contentType.includes('application/json')) {
         const data = await res.json()
         if (data.text) {
-          setAiMessages(prev => {
-            const updated = [...prev]
-            updated[updated.length - 1].content = data.text
-            return updated
-          })
+          setAiMessages(prev => { const updated = [...prev]; updated[updated.length - 1].content = data.text; return updated })
           setAiLoading(false)
           return
         }
       }
 
-      // קריאת זרם המילים באוויר (Stream) מ-Gemini
       const reader = res.body.getReader()
       const decoder = new TextDecoder('utf-8')
       let done = false
@@ -132,32 +120,25 @@ export default function QnAPage() {
         done = readerDone
         if (value) {
           buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() // שומרים את השורה החתוכה לפעם הבאה
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.substring(6)
-              if (dataStr.trim() === '[DONE]') continue
-              try {
-                const dataObj = JSON.parse(dataStr)
-                const textPart = dataObj.candidates?.[0]?.content?.parts?.[0]?.text
-                if (textPart) {
-                  aiReply += textPart
-                  // מעדכנים את הבועה האחרונה עם המילה החדשה
-                  setAiMessages(prev => {
-                    const updated = [...prev]
-                    updated[updated.length - 1].content = aiReply
-                    return updated
-                  })
-                  // גוללים למטה עם כל מילה שנוספת
-                  aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-                }
-              } catch (e) {
-                // מתעלמים משגיאות חיתוך בזמן אמת
-              }
-            }
+          
+          // מנגנון הזרמה חסין-תקלות: שולף מילים ישירות מהזרם גם אם הנתונים מגיעים בחלקים
+          const regex = /"text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g
+          let match
+          let lastIndex = 0
+          
+          while ((match = regex.exec(buffer)) !== null) {
+            let textPart = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+            aiReply += textPart
+            lastIndex = match.index + match[0].length
+            
+            setAiMessages(prev => {
+              const updated = [...prev]
+              updated[updated.length - 1].content = aiReply
+              return updated
+            })
+            aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
           }
+          if (lastIndex > 0) buffer = buffer.substring(lastIndex)
         }
       }
     } catch (e) {
@@ -173,10 +154,8 @@ export default function QnAPage() {
         <button className="btn" onClick={()=>setModal(true)}>+ שאל שאלה</button>
       </div>
 
-      {/* Training book */}
       {bookUrl && (
-        <a href={bookUrl} target="_blank" rel="noreferrer"
-          className="card p-4 flex items-center gap-3 border-blue-500/30 bg-blue-900/10 hover:border-blue-400/60 transition-all cursor-pointer no-underline block">
+        <a href={bookUrl} target="_blank" rel="noreferrer" className="card p-4 flex items-center gap-3 border-blue-500/30 bg-blue-900/10 hover:border-blue-400/60 transition-all cursor-pointer no-underline block">
           <span className="text-3xl">📚</span>
           <div className="flex-1">
             <div className="font-bold">ספר הכשרות — פסח תשפ"ו</div>
@@ -186,7 +165,6 @@ export default function QnAPage() {
         </a>
       )}
 
-      {/* Tabs */}
       <div className="flex gap-2 flex-wrap">
         {[
           ['questions', `❓ שאלות שלי (${myPending.length})`],
@@ -195,14 +173,12 @@ export default function QnAPage() {
           ['videos', '🎥 סרטוני הכשרה'],
           ...(isAdmin || isSenior ? [['all', `📋 כל השאלות (${globalQ.length})`]] : []),
         ].map(([k,l]) => (
-          <button key={k} onClick={()=>setTab(k)}
-            className={`ftab ${tab===k?'active':''}`}>{l}</button>
+          <button key={k} onClick={()=>setTab(k)} className={`ftab ${tab===k?'active':''}`}>{l}</button>
         ))}
       </div>
 
       {tab === 'videos' && <VideosPage />}
 
-      {/* AI Rabbi Tab */}
       {tab === 'ai' && (
         <div className="space-y-3">
           <div className="card p-4 bg-yellow-900/10 border-yellow-500/20">
@@ -212,81 +188,45 @@ export default function QnAPage() {
           
           <div className="flex gap-2 flex-wrap">
             {QUICK_QUESTIONS.map(q => (
-              <button key={q} onClick={() => askAI(q)}
-                className="btn btn-sm text-xs" style={{background:'rgba(234,179,8,.1)',borderColor:'rgba(234,179,8,.3)',color:'#fbbf24'}}>
-                {q}
-              </button>
+              <button key={q} onClick={() => askAI(q)} className="btn btn-sm text-xs" style={{background:'rgba(234,179,8,.1)',borderColor:'rgba(234,179,8,.3)',color:'#fbbf24'}}>{q}</button>
             ))}
           </div>
           
           <div className="card p-4 space-y-3 min-h-[200px] max-h-[500px] overflow-y-auto">
-            {aiMessages.length === 0 && (
-              <div className="text-center text-text3 py-8">שאל שאלה הלכתית...</div>
-            )}
+            {aiMessages.length === 0 && <div className="text-center text-text3 py-8">שאל שאלה הלכתית...</div>}
             {aiMessages.map((m, i) => (
               <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${
-                  m.role==='user'
-                    ? 'bg-gold/20 border border-gold/30 text-text1'
-                    : 'bg-bg3 border border-border1 text-text1'
-                }`}>
+                <div className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${m.role==='user' ? 'bg-gold/20 border border-gold/30 text-text1' : 'bg-bg3 border border-border1 text-text1'}`}>
                   {m.role==='assistant' && <div className="text-xs text-yellow-400 font-bold mb-1">🤖 רב AI</div>}
                   <div style={{whiteSpace:'pre-wrap'}}>{m.content}</div>
                 </div>
               </div>
             ))}
-            
-            {/* מציג "חושב..." רק לפני שהמילה הראשונה יורדת */}
             {aiLoading && aiMessages[aiMessages.length - 1]?.content === '' && (
               <div className="flex justify-start">
-                <div className="bg-bg3 border border-border1 rounded-xl px-4 py-2 text-sm text-text3">
-                  ✍️ מעיין בספר ההכשרות...
-                </div>
+                <div className="bg-bg3 border border-border1 rounded-xl px-4 py-2 text-sm text-text3">✍️ מעיין בספר ההכשרות ומנסח פסיקה...</div>
               </div>
             )}
-            
-            {aiError && (
-              <div className="text-red-400 text-xs bg-red-900/20 border border-red-500/30 rounded-lg p-3">
-                ⚠️ {aiError}
-              </div>
-            )}
+            {aiError && <div className="text-red-400 text-xs bg-red-900/20 border border-red-500/30 rounded-lg p-3">⚠️ {aiError}</div>}
             <div ref={aiBottomRef} />
           </div>
           
           <div className="flex gap-2">
-            <textarea
-              className="form-input flex-1 resize-none h-12"
-              placeholder="שאל שאלה הלכתית... (Enter לשליחה)"
-              value={aiInput}
-              onChange={e => setAiInput(e.target.value)}
-              onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); askAI(aiInput) } }}
-            />
-            <button className="btn btn-gold" onClick={() => askAI(aiInput)} disabled={aiLoading}>
-              {aiLoading ? '⏳' : '📤'}
-            </button>
+            <textarea className="form-input flex-1 resize-none h-12" placeholder="שאל שאלה הלכתית... (Enter לשליחה)" value={aiInput} onChange={e => setAiInput(e.target.value)} onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); askAI(aiInput) } }} />
+            <button className="btn btn-gold" onClick={() => askAI(aiInput)} disabled={aiLoading}>{aiLoading ? '⏳' : '📤'}</button>
           </div>
-          {aiMessages.length > 0 && (
-            <button className="text-xs text-text3 hover:text-text2" onClick={() => { setAiMessages([]); setAiError('') }}>
-              🗑 נקה שיחה
-            </button>
-          )}
+          {aiMessages.length > 0 && <button className="text-xs text-text3 hover:text-text2" onClick={() => { setAiMessages([]); setAiError('') }}>🗑 נקה שיחה</button>}
           <p className="text-text3 text-xs">⚠️ AI בלבד — לשאלות מורכבות פנה לרב יחידה</p>
         </div>
       )}
 
-      {/* My questions */}
       {tab === 'questions' && (
         <div className="space-y-3">
-          {myPending.length === 0 && myAnswered.length === 0 &&
-            <div className="card p-10 text-center text-text3">אין שאלות עדיין</div>}
-          {[...myPending, ...myAnswered].map(q => (
-            <QuestionCard key={q.id} q={q} canAnswer={isAdmin||isSenior}
-              onAnswer={()=>{setAnswerModal(q);setAnswerText('')}} />
-          ))}
+          {myPending.length === 0 && myAnswered.length === 0 && <div className="card p-10 text-center text-text3">אין שאלות עדיין</div>}
+          {[...myPending, ...myAnswered].map(q => <QuestionCard key={q.id} q={q} canAnswer={isAdmin||isSenior} onAnswer={()=>{setAnswerModal(q);setAnswerText('')}} />)}
         </div>
       )}
 
-      {/* FAQ */}
       {tab === 'faq' && (
         <div className="space-y-3">
           {faqs.length === 0 && <div className="card p-10 text-center text-text3">אין שאלות ב-FAQ עדיין</div>}
@@ -296,71 +236,49 @@ export default function QnAPage() {
             return (
               <div key={cat} className="card">
                 <div className="panel-head"><span className="panel-title">⚖️ {cat}</span></div>
-                <div className="divide-y divide-border1/50">
-                  {catFaqs.map(f => <QuestionCard key={f.id} q={f} canAnswer={false} />)}
-                </div>
+                <div className="divide-y divide-border1/50">{catFaqs.map(f => <QuestionCard key={f.id} q={f} canAnswer={false} />)}</div>
               </div>
             )
           })}
         </div>
       )}
 
-      {/* All questions (admin) */}
       {tab === 'all' && (isAdmin||isSenior) && (
         <div className="space-y-3">
-          {globalQ.filter(q=>q.question!=='__training_book__').map(q => (
-            <QuestionCard key={q.id} q={q} canAnswer={true}
-              onAnswer={()=>{setAnswerModal(q);setAnswerText(q.answer||'')}} />
-          ))}
+          {globalQ.filter(q=>q.question!=='__training_book__').map(q => <QuestionCard key={q.id} q={q} canAnswer={true} onAnswer={()=>{setAnswerModal(q);setAnswerText(q.answer||'')}} />)}
         </div>
       )}
 
-      {/* Ask Modal */}
       <Modal open={modal} onClose={()=>setModal(false)} title="❓ שאלה הלכתית">
         <div className="space-y-3">
           <div>
             <label className="text-xs text-text3 font-bold block mb-1">נושא</label>
-            <select className="form-input" value={form.category}
-              onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
-              {CATEGORIES.map(c=><option key={c}>{c}</option>)}
-            </select>
+            <select className="form-input" value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
           </div>
           <div>
             <label className="text-xs text-text3 font-bold block mb-1">השאלה</label>
-            <textarea className="form-input h-28 resize-none"
-              placeholder="פרט את השאלה בצורה ברורה..."
-              value={form.question}
-              onChange={e=>setForm(f=>({...f,question:e.target.value}))} />
+            <textarea className="form-input h-28 resize-none" placeholder="פרט את השאלה בצורה ברורה..." value={form.question} onChange={e=>setForm(f=>({...f,question:e.target.value}))} />
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.is_global}
-              onChange={e=>setForm(f=>({...f,is_global:e.target.checked}))}
-              className="w-4 h-4 accent-gold" />
+            <input type="checkbox" checked={form.is_global} onChange={e=>setForm(f=>({...f,is_global:e.target.checked}))} className="w-4 h-4 accent-gold" />
             <span className="text-sm text-text2">שאלה גלויה לכל היחידות</span>
           </label>
         </div>
         <ModalButtons onClose={()=>setModal(false)} onSave={askQuestion} saveLabel="📤 שלח שאלה" />
       </Modal>
 
-      {/* Answer Modal */}
       <Modal open={!!answerModal} onClose={()=>setAnswerModal(null)} title="✍️ מענה הלכתי">
         {answerModal && (
           <div className="space-y-3">
-            <div className="bg-bg3 rounded-lg p-3 text-sm">
-              <strong>השאלה:</strong> {answerModal.question}
-            </div>
+            <div className="bg-bg3 rounded-lg p-3 text-sm"><strong>השאלה:</strong> {answerModal.question}</div>
             <div>
               <label className="text-xs text-text3 font-bold block mb-1">התשובה ההלכתית</label>
-              <textarea className="form-input h-32 resize-none"
-                placeholder="כתוב את הפסיקה..."
-                value={answerText}
-                onChange={e=>setAnswerText(e.target.value)} />
+              <textarea className="form-input h-32 resize-none" placeholder="כתוב את הפסיקה..." value={answerText} onChange={e=>setAnswerText(e.target.value)} />
             </div>
             <p className="text-text3 text-xs">* התשובה תועבר אוטומטית ל-FAQ ותהיה גלויה לכל היחידות</p>
           </div>
         )}
-        <ModalButtons onClose={()=>setAnswerModal(null)} onSave={saveAnswer}
-          saveLabel="✅ אשר פסיקה" saveClass="btn-green" />
+        <ModalButtons onClose={()=>setAnswerModal(null)} onSave={saveAnswer} saveLabel="✅ אשר פסיקה" saveClass="btn-green" />
       </Modal>
     </div>
   )
@@ -384,15 +302,9 @@ function QuestionCard({ q, canAnswer, onAnswer }) {
               <p className="text-sm">{q.answer}</p>
             </div>
           )}
-          <div className="text-text3 text-xs mt-2">
-            {new Date(q.created_at).toLocaleDateString('he-IL')}
-          </div>
+          <div className="text-text3 text-xs mt-2">{new Date(q.created_at).toLocaleDateString('he-IL')}</div>
         </div>
-        {canAnswer && (
-          <button className="btn btn-green btn-sm flex-shrink-0" onClick={onAnswer}>
-            ✍️ {q.answer ? 'ערוך' : 'ענה'}
-          </button>
-        )}
+        {canAnswer && <button className="btn btn-green btn-sm flex-shrink-0" onClick={onAnswer}>✍️ {q.answer ? 'ערוך' : 'ענה'}</button>}
       </div>
     </div>
   )
