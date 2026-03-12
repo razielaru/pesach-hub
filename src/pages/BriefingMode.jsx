@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import supabase from '../supabaseClient'
 import { UNITS } from '../lib/units'
 
 // ─── SmartAlerts engine (shared logic) ────────────────────────────────────
