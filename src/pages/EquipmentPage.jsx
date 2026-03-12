@@ -17,11 +17,14 @@ export default function EquipmentPage() {
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
 
   async function load() {
-    const [eq, dl] = await Promise.all([
-      supabase.from('equipment').select('*').eq('unit_id', currentUnit.id).order('name'),
-      supabase.from('dispatch_log').select('*').eq('unit_id', currentUnit.id)
-        .order('created_at', { ascending: false }).limit(30),
-    ])
+    const eqQuery = supabase.from('equipment').select('*').order('name')
+    if (!isAdmin && !isSenior) eqQuery.eq('unit_id', currentUnit.id)
+
+    const dlQuery = supabase.from('dispatch_log').select('*')
+      .order('created_at', { ascending: false }).limit(50)
+    if (!isAdmin && !isSenior) dlQuery.eq('unit_id', currentUnit.id)
+
+    const [eq, dl] = await Promise.all([eqQuery, dlQuery])
     setItems(eq.data || [])
     setDispLog(dl.data || [])
   }
@@ -31,6 +34,13 @@ export default function EquipmentPage() {
     await supabase.from('equipment').insert({ unit_id: currentUnit.id, ...form })
     showToast('פריט נוסף ✅', 'green'); setModal(false)
     setForm({ name:'', category:'כשרות', have:0, need:10 }); load()
+  }
+
+  async function deleteItem(id) {
+    if (!confirm('למחוק פריט לגמרי?')) return
+    await supabase.from('equipment').delete().eq('id', id)
+    setItems(prev => prev.filter(i => i.id !== id))
+    showToast('פריט נמחק', 'red')
   }
 
   async function changeQty(id, delta) {
@@ -53,6 +63,23 @@ export default function EquipmentPage() {
     const existing = items.find(i=>i.name===dispForm.item)
     if (existing) {
       await supabase.from('equipment').update({ have: existing.have + dispForm.qty }).eq('id', existing.id)
+    } else {
+      // Create new item if doesn't exist
+      await supabase.from('equipment').insert({
+        unit_id: currentUnit.id,
+        name: dispForm.item,
+        category: 'ניפוק',
+        have: dispForm.qty,
+        need: dispForm.qty
+      })
+    }
+    // Notify via broadcast if unit is not admin
+    if (!isAdmin && !isSenior) {
+      await supabase.from('broadcast_alerts').insert({
+        message: `📦 ${currentUnit.name} דרשה: ${dispForm.item} × ${dispForm.qty}${dispForm.note ? ' — ' + dispForm.note : ''}`,
+        sent_by: currentUnit.name,
+        is_active: false // informational only
+      })
     }
     showToast('ניפוק נרשם ✅', 'green')
     setDispModal(false); setDispForm({ item:'', qty:1, note:'' }); load()
@@ -86,7 +113,7 @@ export default function EquipmentPage() {
         </div>
         <div className="card overflow-hidden">
           <table className="w-full tbl">
-            <thead><tr><th>פריט</th><th>קטגוריה</th><th>יש</th><th>נדרש</th><th>%</th><th>עדכון</th></tr></thead>
+            <thead><tr><th>פריט</th><th>קטגוריה</th>{(isAdmin||isSenior)&&<th>יחידה</th>}<th>יש</th><th>נדרש</th><th>%</th><th>עדכון</th><th></th></tr></thead>
             <tbody>
               {items.map(e => {
                 const pct = Math.min(100, Math.round(e.have/Math.max(e.need,1)*100))
@@ -96,6 +123,7 @@ export default function EquipmentPage() {
                   <tr key={e.id}>
                     <td className="font-bold">{e.name}</td>
                     <td><span className="badge badge-dim">{e.category}</span></td>
+                    {(isAdmin||isSenior)&&<td className="text-text3 text-xs">{e.unit_id}</td>}
                     <td className="font-bold text-base">{e.have}</td>
                     <td className="text-text3">{e.need}</td>
                     <td>
@@ -110,10 +138,14 @@ export default function EquipmentPage() {
                         <button className="btn btn-red btn-sm" onClick={()=>changeQty(e.id,-1)}>−</button>
                       </div>
                     </td>
+                    <td>
+                      <button className="btn btn-sm opacity-40 hover:opacity-100 transition-opacity"
+                        style={{color:'#f87171'}} onClick={()=>deleteItem(e.id)}>🗑</button>
+                    </td>
                   </tr>
                 )
               })}
-              {items.length===0 && <tr><td colSpan={6} className="text-center text-text3 py-8">אין פריטים</td></tr>}
+              {items.length===0 && <tr><td colSpan={8} className="text-center text-text3 py-8">אין פריטים</td></tr>}
             </tbody>
           </table>
         </div>

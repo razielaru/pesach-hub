@@ -17,9 +17,11 @@ export default function TrainingPage() {
     const updates = { training_status: status }
     if (status === 'active') updates.training_start = new Date().toISOString().split('T')[0]
     if (status === 'done') updates.training_end = new Date().toISOString().split('T')[0]
-    await supabase.from('personnel').update(updates).eq('id', id)
-    showToast(status==='done'?'הוכשר! 🎉':status==='active'?'הכשרה החלה':'איפוס', status==='done'?'green':'gold')
-    load()
+    // Optimistic update
+    setPeople(prev => prev.map(p => p.id===id ? {...p, ...updates} : p))
+    const { error } = await supabase.from('personnel').update(updates).eq('id', id)
+    if (error) { showToast('שגיאה: ' + error.message, 'red'); load(); return }
+    showToast(status==='done'?'הוכשר! 🎉':status==='active'?'הכשרה החלה ▶':'איפוס', status==='done'?'green':'gold')
   }
 
   const done = people.filter(p=>p.training_status==='done').length

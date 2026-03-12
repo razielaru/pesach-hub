@@ -456,7 +456,7 @@ export function UnitManagePage() {
     setBookLoading(false); setBookModal(false)
   }
 
-  const nonAdmin = units.filter(u => !u.is_admin)
+  const nonAdmin = units // כולל פיקוד
 
   return (
     <div className="space-y-5">

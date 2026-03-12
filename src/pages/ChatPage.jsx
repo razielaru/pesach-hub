@@ -55,9 +55,19 @@ export default function ChatPage() {
       channel_name: channel,
       message: text.trim(),
       is_broadcast: isAdmin || isSenior,
+      created_at: new Date().toISOString(),
+      id: 'temp_' + Date.now(),
     }
-    await supabase.from('chat_messages').insert(msg)
+    // Optimistic update — show immediately
+    setMessages(prev => [...prev, msg])
     setText('')
+    await supabase.from('chat_messages').insert({
+      unit_id: msg.unit_id,
+      unit_name: msg.unit_name,
+      channel_name: msg.channel_name,
+      message: msg.message,
+      is_broadcast: msg.is_broadcast,
+    })
   }
 
   function handleKey(e) {

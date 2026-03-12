@@ -5,11 +5,7 @@ import Modal, { ModalButtons } from '../components/ui/Modal'
 
 const CATEGORIES = ['כשרות', 'פסח', 'שבת', 'תפילה', 'כללי']
 
-const DEFAULT_VIDEOS = [
-  { id: 'def1', title: 'הכשרת מטבח לפסח — יסודות', category: 'פסח', youtube_id: 'dQw4w9WgXcQ', description: 'כל מה שצריך לדעת על הכשרת מטבח צבאי לפסח', is_global: true },
-  { id: 'def2', title: 'הגעלת כלים — הדרכה מעשית', category: 'פסח', youtube_id: 'dQw4w9WgXcQ', description: 'שלבי הגעלת כלים בשדה', is_global: true },
-  { id: 'def3', title: 'בדיקת חמץ בתנאי שטח', category: 'פסח', youtube_id: 'dQw4w9WgXcQ', description: 'הלכות בדיקת חמץ למוצב ולבסיס', is_global: true },
-]
+const DEFAULT_VIDEOS = []
 
 function getYouTubeId(input) {
   if (!input) return null
@@ -65,9 +61,11 @@ export default function VideosPage() {
   }
 
   async function del(id) {
-    if (!confirm('למחוק?')) return
-    await supabase.from('training_videos').delete().eq('id', id)
+    if (!confirm('למחוק סרטון זה?')) return
+    const { error } = await supabase.from('training_videos').delete().eq('id', id)
+    if (error) { showToast('שגיאה: ' + error.message, 'red'); return }
     setVideos(prev => prev.filter(v => v.id !== id))
+    showToast('סרטון נמחק 🗑', 'red')
   }
 
   const allCats = ['הכל', ...CATEGORIES]
@@ -171,7 +169,7 @@ export default function VideosPage() {
                 {v.description && (
                   <p className="text-text3 text-xs line-clamp-2">{v.description}</p>
                 )}
-                {canEdit && !v.is_global && (
+                {canEdit && (
                   <button onClick={e => { e.stopPropagation(); del(v.id) }}
                     className="mt-2 text-red-400/50 hover:text-red-400 text-xs transition-colors">
                     🗑 מחק
