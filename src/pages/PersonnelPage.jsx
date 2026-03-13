@@ -5,7 +5,7 @@ import { useStore } from '../store/useStore'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
 import * as XLSX from 'xlsx'
-import { getLeafUnits } from '../lib/units'
+import { getSubordinateUnits } from '../lib/units'
 
 const STATUS_LABEL = { available:'זמין', zoom:'זום', away:'הגב', leave:'שחרור' }
 const STATUS_CLS   = { available:'badge-green', zoom:'badge-blue', away:'badge-orange', leave:'badge-red' }
@@ -23,7 +23,7 @@ function PersonnelTab() {
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
 
   async function load() {
-    const subs = getLeafUnits(currentUnit.id)
+    const subs = getSubordinateUnits(currentUnit.id)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
     const query = ids.length === 1
       ? supabase.from('personnel').select('*').eq('unit_id', ids[0])

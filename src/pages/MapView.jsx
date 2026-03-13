@@ -25,7 +25,15 @@ const DEFAULT_COORDS = {
 
 const HEALTH_COLOR = { green: '#22c55e', orange: '#f97316', red: '#ef4444' }
 const HEALTH_LABEL = { green: 'תקין ✓', orange: 'דורש תשומת לב', red: '⚠ קריטי' }
-const PIN_COLORS   = { blue:'#3b82f6', red:'#ef4444', yellow:'#eab308', purple:'#a855f7', white:'#e5e7eb' }
+const PIN_COLORS   = { blue:'#3b82f6', red:'#ef4444', yellow:'#eab308', purple:'#a855f7', white:'#e5e7eb', green:'#22c55e', orange:'#f97316' }
+const PIN_TYPES = [
+  { value:'general',   label:'📍 כללי',          color:'blue'   },
+  { value:'kitchen',   label:'🍳 מטבח',           color:'orange' },
+  { value:'storage',   label:'📦 מחסן/אספקה',     color:'purple' },
+  { value:'base',      label:'🏕 בסיס/עמדה',      color:'green'  },
+  { value:'checkpoint',label:'🔍 עמדת בדיקה',     color:'yellow' },
+  { value:'alert',     label:'🆘 דיווח בעיה',     color:'red'    },
+]
 
 // הסטה ביטחונית — 300-700 מטר אקראי
 function secureOffset(lat, lng) {
@@ -46,8 +54,10 @@ export default function MapView({ unitStats }) {
   const [selected, setSelected]   = useState(null)
   const [addModal, setAddModal]   = useState(false)
   const [pendingLatLng, setPendingLatLng] = useState(null)   // from map click
-  const [pinForm, setPinForm]     = useState({ label:'', note:'', color:'blue' })
+  const [pinForm, setPinForm]     = useState({ label:'', note:'', color:'blue', type:'general' })
   const [locating, setLocating]   = useState(false)
+  const [showHeatmap, setShowHeatmap] = useState(false)
+  const heatLayerRef = useRef(null)
 
   const canEdit = isAdmin || isSenior
   const nonAdminUnits = UNITS.filter(u => !u.is_admin)
@@ -60,15 +70,16 @@ export default function MapView({ unitStats }) {
   }
 
   async function savePin() {
-    if (!pinForm.label || !pendingLatLng) return
+    if (!pendingLatLng) return
+    const labelToUse = pinForm.label || (PIN_TYPES.find(t=>t.value===pinForm.type)?.label || '📍 נקודה')
     const [lat, lng] = secureOffset(pendingLatLng.lat, pendingLatLng.lng)
     const { error } = await supabase.from('map_pins').insert({
-      label: pinForm.label, note: pinForm.note, color: pinForm.color,
+      label: labelToUse, note: pinForm.note, color: pinForm.color, location_type: pinForm.type,
       lat, lng, created_by: currentUnit?.name,
     })
     if (error) { showToast('שגיאה: ' + error.message, 'red'); return }
     showToast('נקודה נוספה ✅ (מוסטת ~500מ׳ לאבטחה)', 'green')
-    setAddModal(false); setPinForm({ label:'', note:'', color:'blue' }); loadPins()
+    setAddModal(false); setPinForm({ label:'', note:'', color:'blue', type:'general' }); loadPins()
   }
 
   async function deletePin(id) {
@@ -185,6 +196,55 @@ export default function MapView({ unitStats }) {
     })
   }, [pins])
 
+  // ── Heat Map ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapInstance.current || !window.L) return
+    // הסר שכבה קיימת
+    if (heatLayerRef.current) {
+      mapInstance.current.removeLayer(heatLayerRef.current)
+      heatLayerRef.current = null
+    }
+    if (!showHeatmap) return
+
+    // בנה נקודות heat לפי מספר חריגים + ציוד חסר
+    const points = []
+    Object.entries(unitStats || {}).forEach(([uid, s]) => {
+      const coords = DEFAULT_COORDS[uid]
+      if (!coords) return
+      const intensity = (s.openInc || 0) * 3 + (s.equipMissing || 0)
+      if (intensity > 0) {
+        // כמה נקודות לפי עצמה
+        for (let i = 0; i < Math.min(intensity, 10); i++) {
+          const jitter = 0.01
+          points.push([
+            coords[0] + (Math.random()-0.5)*jitter,
+            coords[1] + (Math.random()-0.5)*jitter,
+            intensity / 10
+          ])
+        }
+      }
+    })
+
+    if (points.length === 0) return
+
+    // Leaflet heat בסיסי — ריבועים צבעוניים כ-fallback (אין leaflet.heat ב-CDN)
+    const heatGroup = window.L.layerGroup()
+    points.forEach(([lat, lng, val]) => {
+      const size = Math.max(20, val * 40)
+      const alpha = Math.min(0.7, val * 0.8)
+      const color = val > 0.6 ? '#ef4444' : val > 0.3 ? '#f97316' : '#eab308'
+      window.L.circle([lat, lng], {
+        radius: size * 50,
+        color: 'transparent',
+        fillColor: color,
+        fillOpacity: alpha,
+      }).addTo(heatGroup)
+    })
+    heatGroup.addTo(mapInstance.current)
+    heatLayerRef.current = heatGroup
+  }, [showHeatmap, unitStats])
+
+
   const h = selected?.stats?.health || 'orange'
 
   return (
@@ -197,13 +257,21 @@ export default function MapView({ unitStats }) {
           ))}
           <div className="flex items-center gap-1.5 text-blue-400"><span>📍</span><span>נקודה מותאמת</span></div>
         </div>
-        {canEdit && (
-          <button onClick={useMyLocation} disabled={locating}
-            className="btn btn-sm flex items-center gap-2"
-            style={{background:'rgba(59,130,246,.15)',borderColor:'rgba(59,130,246,.4)',color:'#60a5fa'}}>
-            {locating ? '⏳ מאתר...' : '📍 הוסף מיקום נוכחי'}
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setShowHeatmap(h => !h)}
+            className={`btn btn-sm flex items-center gap-2 transition-all ${showHeatmap
+              ? 'bg-red-900/40 border-red-500/60 text-red-400'
+              : 'bg-bg3 border-border1 text-text3 hover:text-text1'}`}>
+            🌡️ {showHeatmap ? 'הסתר Heat Map' : 'הצג Heat Map'}
           </button>
-        )}
+          {canEdit && (
+            <button onClick={useMyLocation} disabled={locating}
+              className="btn btn-sm flex items-center gap-2"
+              style={{background:'rgba(59,130,246,.15)',borderColor:'rgba(59,130,246,.4)',color:'#60a5fa'}}>
+              {locating ? '⏳ מאתר...' : '📍 הוסף מיקום נוכחי'}
+            </button>
+          )}
+        </div>
       </div>
 
       {canEdit && <p className="text-xs text-yellow-400/60">לחץ על המפה להוספת נקודה · לחץ ימני על נקודה למחיקה · המיקום מוסט ~500מ׳ לאבטחה</p>}
@@ -273,7 +341,21 @@ export default function MapView({ unitStats }) {
           </div>
           <div>
             <label className="text-xs text-text3 font-bold block mb-1">שם הנקודה *</label>
+            {/* סוג מיקום */}
+            <div className="grid grid-cols-3 gap-1.5 mb-1">
+              {PIN_TYPES.map(t => (
+                <button key={t.value} onClick={() => setPinForm(f => ({...f, type:t.value, color:t.color}))}
+                  className={`text-xs px-2 py-1.5 rounded-lg border transition-all ${pinForm.type===t.value
+                    ? 'bg-gold/20 border-gold/60 text-gold' : 'bg-bg3 border-border1 text-text2 hover:border-border2'}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <input className="form-input" placeholder="שם הנקודה (אופציונלי — ברירת מחדל לפי סוג)"
+              value={pinForm.label} onChange={e=>setPinForm(f=>({...f,label:e.target.value}))}
+              onKeyDown={e=>e.key==='Enter'&&savePin()}/>
             <input className="form-input" placeholder="לדוגמה: מחסן כשרות, עמדת בדיקה..."
+              style={{display:'none'}}
               value={pinForm.label} onChange={e=>setPinForm(f=>({...f,label:e.target.value}))}
               autoFocus />
           </div>

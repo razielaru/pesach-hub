@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import { getLeafUnits } from '../lib/units'
+import { getSubordinateUnits } from '../lib/units'
 
 export default function TrainingPage() {
   const { currentUnit, showToast } = useStore()
@@ -11,7 +11,7 @@ export default function TrainingPage() {
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
   async function load() {
-    const subs = getLeafUnits(currentUnit.id)
+    const subs = getSubordinateUnits(currentUnit.id)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
     const query = ids.length === 1
       ? supabase.from('personnel').select('*').eq('unit_id', ids[0])

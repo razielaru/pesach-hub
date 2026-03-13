@@ -6,6 +6,7 @@ import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
 import BriefingMode, { useSmartAlerts } from './BriefingMode'
 import MapView from './MapView'
+import DutyOfficerAI from './DutyOfficerAI'
 
 export default function CommandPage() {
   const { currentUnit, showToast } = useStore()
@@ -179,7 +180,7 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
         </div>
         <div className="flex gap-2 flex-wrap">
           <div className="flex bg-bg3 border border-border1 rounded-xl overflow-hidden">
-            {[['table','📋 טבלה'],['map','🗺️ מפה'],['compare','📊 השוואה']].map(([id,label])=>(
+            {[['table','📋 טבלה'],['map','🗺️ מפה'],['compare','📊 השוואה'],['ai','🎖️ קצין תורן']].map(([id,label])=>(
               <button key={id} onClick={()=>setViewMode(id)}
                 className={`px-3 py-2 text-xs font-bold transition-all ${viewMode===id?'bg-gold text-black':'text-text2 hover:text-text1'}`}>
                 {label}
@@ -220,6 +221,42 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
         <KpiCard label="ניקיון ממוצע" value={`${avgClean}%`} color={avgClean>=70?'green':avgClean>=50?'orange':'red'}/>
         <KpiCard label="ציוד חסר" value={totalMissing} sub="פריטים" color={totalMissing===0?'green':'red'}/>
         <KpiCard label="חריגים פתוחים" value={totalInc} color={totalInc===0?'green':'red'}/>
+      </div>
+
+      {/* ══ Operational Status Bar ══ */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-black">📊 פס מצב מבצעי</span>
+          <span className="text-text3 text-xs">{new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label:'הכשרה', val:avgTrained, color:avgTrained>=70?'bg-green-500':avgTrained>=50?'bg-orange-500':'bg-red-500', icon:'🎓' },
+            { label:'ניקיון', val:avgClean,   color:avgClean>=70?'bg-green-500':avgClean>=50?'bg-orange-500':'bg-red-500',     icon:'🧹' },
+            { label:'ציוד',   val:totalMissing===0?100:Math.max(0,100-totalMissing*8), color:totalMissing===0?'bg-green-500':totalMissing<=3?'bg-orange-500':'bg-red-500', icon:'📦', text:totalMissing===0?'מלא':`חסר ${totalMissing}` },
+            { label:'חריגים', val:totalInc===0?100:Math.max(0,100-totalInc*15), color:totalInc===0?'bg-green-500':totalInc<=2?'bg-orange-500':'bg-red-500', icon:'🆘', text:totalInc===0?'נקי':`${totalInc} פתוחים` },
+          ].map(item => (
+            <div key={item.label} className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-text3">{item.icon} {item.label}</span>
+                <span className="font-bold text-text1">{item.text || item.val+'%'}</span>
+              </div>
+              <div className="h-2.5 bg-bg4 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-1000 ${item.color}`}
+                  style={{width:`${item.val}%`}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* יחידות ללא דיווח */}
+        {nonAdminUnits.filter(u => !unitStats[u.id] || unitStats[u.id].personnel === 0).length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border1">
+            <span className="text-xs text-orange-400 font-bold">⚠️ יחידות ללא נתונים: </span>
+            <span className="text-xs text-text3">
+              {nonAdminUnits.filter(u => !unitStats[u.id] || unitStats[u.id].personnel === 0).map(u=>u.name).join(' · ')}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Table view */}
@@ -394,6 +431,8 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
         </div>
         <ModalButtons onClose={()=>setDispatchModal(false)} onSave={saveDispatch} saveLabel="📦 רשום ניפוק"/>
       </Modal>
+      {viewMode === 'ai' && <DutyOfficerAI />}
+
     </div>
   )
 }

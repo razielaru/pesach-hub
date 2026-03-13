@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import { getLeafUnits } from '../lib/units'
+import { getSubordinateUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 
 // ══ CLEANING ══
@@ -13,7 +13,7 @@ export function CleaningPage() {
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
   async function load() {
-    const subs = getLeafUnits(currentUnit.id)
+    const subs = getSubordinateUnits(currentUnit.id)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
     const query = ids.length === 1
       ? supabase.from('cleaning_areas').select('*').eq('unit_id', ids[0])
@@ -82,7 +82,7 @@ export function TasksPage() {
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
   async function load() {
-    const subs = getLeafUnits(currentUnit.id)
+    const subs = getSubordinateUnits(currentUnit.id)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
     const query = ids.length === 1
       ? supabase.from('tasks').select('*').eq('unit_id', ids[0])
