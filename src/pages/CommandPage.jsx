@@ -6,7 +6,6 @@ import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
 import BriefingMode, { useSmartAlerts } from './BriefingMode'
 import MapView from './MapView'
-import DutyOfficerAI from './DutyOfficerAI'
 
 export default function CommandPage() {
   const { currentUnit, showToast } = useStore()
@@ -180,7 +179,7 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
         </div>
         <div className="flex gap-2 flex-wrap">
           <div className="flex bg-bg3 border border-border1 rounded-xl overflow-hidden">
-            {[['table','📋 טבלה'],['map','🗺️ מפה'],['compare','📊 השוואה'],['ai','🎖️ קצין תורן']].map(([id,label])=>(
+            {[['table','📋 טבלה'],['map','🗺️ מפה'],['compare','📊 השוואה']].map(([id,label])=>(
               <button key={id} onClick={()=>setViewMode(id)}
                 className={`px-3 py-2 text-xs font-bold transition-all ${viewMode===id?'bg-gold text-black':'text-text2 hover:text-text1'}`}>
                 {label}
@@ -290,7 +289,7 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
 
       {viewMode === 'map' && <MapView unitStats={unitStats} />}
 
-      {viewMode === 'ai' && <DutyOfficerAI />}
+
 
       {viewMode === 'compare' && (
         <div className="space-y-3">
