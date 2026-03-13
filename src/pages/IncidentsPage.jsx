@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
+import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 
 const SEV = { critical:'badge-red', high:'badge-red', medium:'badge-orange', low:'badge-blue' }
@@ -17,14 +18,18 @@ export default function IncidentsPage() {
     load()
     const ch = supabase.channel('inc_page')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incidents',
-        filter: `unit_id=eq.${currentUnit.id}` }, load)
+      }, () => load())
       .subscribe()
     return () => supabase.removeChannel(ch)
   }, [currentUnit])
 
   async function load() {
-    const { data } = await supabase.from('incidents').select('*')
-      .eq('unit_id', currentUnit.id).order('created_at', { ascending: false })
+    const subs = getLeafUnits(currentUnit.id)
+    const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
+    const query = ids.length === 1
+      ? supabase.from('incidents').select('*').eq('unit_id', ids[0])
+      : supabase.from('incidents').select('*').in('unit_id', ids)
+    const { data } = await query.order('created_at', { ascending: false })
     setIncidents(data || [])
   }
 

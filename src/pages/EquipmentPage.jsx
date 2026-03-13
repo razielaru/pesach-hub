@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
+import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
 
@@ -17,12 +18,19 @@ export default function EquipmentPage() {
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
 
   async function load() {
-    const eqQuery = supabase.from('equipment').select('*').order('name')
-    if (!isAdmin && !isSenior) eqQuery.eq('unit_id', currentUnit.id)
+    const subs = getLeafUnits(currentUnit.id)
+    const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
 
-    const dlQuery = supabase.from('dispatch_log').select('*')
-      .order('created_at', { ascending: false }).limit(50)
-    if (!isAdmin && !isSenior) dlQuery.eq('unit_id', currentUnit.id)
+    let eqQuery = supabase.from('equipment').select('*').order('name')
+    let dlQuery = supabase.from('dispatch_log').select('*').order('created_at', { ascending: false }).limit(50)
+
+    if (ids.length === 1) {
+      eqQuery = eqQuery.eq('unit_id', ids[0])
+      dlQuery = dlQuery.eq('unit_id', ids[0])
+    } else {
+      eqQuery = eqQuery.in('unit_id', ids)
+      dlQuery = dlQuery.in('unit_id', ids)
+    }
 
     const [eq, dl] = await Promise.all([eqQuery, dlQuery])
     setItems(eq.data || [])

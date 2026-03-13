@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
+import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 
 // ══ CLEANING ══
@@ -12,7 +13,12 @@ export function CleaningPage() {
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
   async function load() {
-    const { data } = await supabase.from('cleaning_areas').select('*').eq('unit_id', currentUnit.id).order('name')
+    const subs = getLeafUnits(currentUnit.id)
+    const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
+    const query = ids.length === 1
+      ? supabase.from('cleaning_areas').select('*').eq('unit_id', ids[0])
+      : supabase.from('cleaning_areas').select('*').in('unit_id', ids)
+    const { data } = await query.order('name')
     setAreas(data || [])
   }
   async function cycle(a) {
@@ -76,7 +82,12 @@ export function TasksPage() {
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
   async function load() {
-    const { data } = await supabase.from('tasks').select('*').eq('unit_id', currentUnit.id).order('created_at',{ascending:false})
+    const subs = getLeafUnits(currentUnit.id)
+    const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
+    const query = ids.length === 1
+      ? supabase.from('tasks').select('*').eq('unit_id', ids[0])
+      : supabase.from('tasks').select('*').in('unit_id', ids)
+    const { data } = await query.order('created_at', {ascending: false})
     setTasks(data || [])
   }
   async function save() {

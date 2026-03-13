@@ -23,18 +23,18 @@ const BOTTOM_NAV = [
 ]
 
 const FULL_NAV = [
-  { id: 'dashboard',  label: '🏠 ראשי',            admin: false },
-  { id: 'personnel',  label: '👥 כוח אדם',          admin: false },
-  { id: 'training',   label: '🎓 הכשרות',           admin: false },
-  { id: 'equipment',  label: '📦 ציוד',              admin: false },
-  { id: 'cleaning',   label: '🧹 ניקיונות',         admin: false },
-  { id: 'tasks',      label: '✅ משימות',            admin: false },
-  { id: 'incidents',  label: '🆘 חריגים',            admin: false },
-  { id: 'qna',        label: '⚖️ שו"ת הלכתי',       admin: false },
-  { id: 'timeline',   label: '📅 לוח שנה',           admin: false },
-  { id: 'chat',       label: "💬 צ'אט יחידות",      admin: false },
-  { id: 'command',    label: '⭐ פיקוד על',            admin: true  },
-  { id: 'unitmanage', label: '⚙ ניהול',               admin: true  },
+  { id: 'dashboard',  label: '🏠 ראשי',             admin: false, seniorOnly: false },
+  { id: 'personnel',  label: '👥 כוח אדם',           admin: false, seniorOnly: false },
+  { id: 'training',   label: '🎓 הכשרות',            admin: false, seniorOnly: false },
+  { id: 'equipment',  label: '📦 ציוד',               admin: false, seniorOnly: false },
+  { id: 'cleaning',   label: '🧹 ניקיונות',          admin: false, seniorOnly: false },
+  { id: 'tasks',      label: '✅ משימות',             admin: false, seniorOnly: false },
+  { id: 'incidents',  label: '🆘 חריגים',             admin: false, seniorOnly: false },
+  { id: 'qna',        label: '⚖️ שו"ת הלכתי',        admin: false, seniorOnly: false },
+  { id: 'timeline',   label: '📅 לוח שנה',            admin: false, seniorOnly: false },
+  { id: 'chat',       label: "💬 צ'אט יחידות",       admin: false, seniorOnly: false },
+  { id: 'command',    label: '⭐ פיקוד על',           admin: false, seniorOnly: true  }, // אוגדה + פיקוד
+  { id: 'unitmanage', label: '⚙ ניהול',              admin: true,  seniorOnly: false }, // פיקוד בלבד
 ]
 
 export default function AppShell() {
@@ -85,8 +85,16 @@ export default function AppShell() {
     setAlerts(prev => prev.filter(a => a.id !== id))
   }
 
-  const canSeeAdmin = isAdmin || isSenior
-  const visibleNav = FULL_NAV.filter(n => !n.admin || canSeeAdmin)
+  const canSeeAdmin = isAdmin
+  const canSeeSenior = isAdmin || isSenior
+
+  // סינון ניווט לפי הרשאות
+  const visibleNav = FULL_NAV.filter(n => {
+    if (n.admin) return canSeeAdmin       // ניהול — פיקוד בלבד
+    if (n.seniorOnly) return canSeeSenior // פיקוד על — אוגדה + פיקוד
+    return true                           // שאר — כולם
+  })
+
   const visibleAlerts = alerts.filter(a => !alertDismissed.has(a.id))
 
   const pages = {
@@ -130,8 +138,8 @@ export default function AppShell() {
           </span>
           <span className="text-text3 text-xs font-mono hidden md:block">{clock}</span>
 
-          {/* Broadcast button (admin/senior) */}
-          {canSeeAdmin && (
+          {/* Broadcast — admin/senior */}
+          {canSeeSenior && (
             <button onClick={() => setShowAlertInput(!showAlertInput)} title="שלח מבזק"
               className={`w-8 h-8 rounded-lg border text-sm flex items-center justify-center transition-all
                 ${showAlertInput ? 'bg-yellow-900/40 border-gold text-gold' : 'bg-bg3 border-border1 text-text2 hover:border-border2'}`}>
@@ -155,7 +163,7 @@ export default function AppShell() {
       </header>
 
       {/* Alert input */}
-      {showAlertInput && canSeeAdmin && (
+      {showAlertInput && canSeeSenior && (
         <div className="bg-yellow-900/20 border-b border-gold/30 px-4 py-2 flex gap-2 items-center z-40">
           <span className="text-gold text-sm flex-shrink-0">📢 מבזק:</span>
           <input className="flex-1 bg-bg3 border border-border2 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-gold"
@@ -198,48 +206,40 @@ export default function AppShell() {
               {visibleNav.map(n => (
                 <button key={n.id} onClick={() => navTo(n.id)}
                   className={`w-full text-right px-4 py-3 rounded-xl text-sm font-bold transition-all
-                    ${activePage === n.id ? 'bg-yellow-900/30 text-gold border border-gold/20' : 'text-text2 hover:text-text1 hover:bg-bg3'}`}>
+                    ${activePage === n.id ? 'bg-yellow-900/30 text-gold border border-gold/30' : 'text-text2 hover:bg-bg3 hover:text-text1'}`}>
                   {n.label}
                 </button>
               ))}
             </nav>
-            <div className="p-4 border-t border-border1 space-y-2">
-              <div className="text-center text-gold2 font-black text-2xl">{days}</div>
-              <div className="text-center text-text3 text-xs">ימים לפסח ⏳</div>
-              <div className="text-center text-text3 text-xs font-mono">{clock}</div>
-              <button onClick={logout} className="w-full btn btn-ghost text-sm mt-2">← החלף יחידה</button>
+            <div className="p-4 border-t border-border1">
+              <button onClick={() => { logout(); setMenuOpen(false) }}
+                className="w-full btn text-sm">← החלף יחידה</button>
             </div>
           </div>
         </>
       )}
 
-      {/* Page content */}
-      <main className="flex-1 p-4 md:p-6 max-w-[1400px] mx-auto w-full pb-24 lg:pb-6">
-        {pages[activePage] || <Dashboard />}
+      {/* Main content */}
+      <main className="flex-1 overflow-y-auto pb-20 lg:pb-4">
+        <div className="max-w-5xl mx-auto px-4 py-5">
+          {pages[activePage] || <Dashboard />}
+        </div>
       </main>
 
-      {/* Bottom Navigation — mobile only */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-bg1 border-t border-border1 flex items-stretch shadow-[0_-4px_24px_rgba(0,0,0,0.4)]">
-        {BOTTOM_NAV.map(n => (
-          <button key={n.id} onClick={() => navTo(n.id)}
-            className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all relative
-              ${activePage === n.id ? 'text-gold' : 'text-text3'}`}>
-            <span className={`text-xl ${activePage === n.id ? 'scale-110' : ''} transition-transform`}>{n.icon}</span>
-            <span className="text-[10px] font-bold">{n.label}</span>
-            {activePage === n.id && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-gold rounded-full" />}
-          </button>
-        ))}
-        <button onClick={() => setMenuOpen(true)}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 ${menuOpen ? 'text-gold' : 'text-text3'}`}>
-          <span className="text-xl">☰</span>
-          <span className="text-[10px] font-bold">עוד</span>
-        </button>
-        <button onClick={logout}
-          className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-red-400/70 hover:text-red-400 transition-colors border-r border-border1/50">
-          <span className="text-xl">🚪</span>
-          <span className="text-[10px] font-bold">יציאה</span>
-        </button>
+      {/* Bottom nav */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-bg1 border-t border-border1 z-40">
+        <div className="flex">
+          {BOTTOM_NAV.map(n => (
+            <button key={n.id} onClick={() => navTo(n.id)}
+              className={`flex-1 flex flex-col items-center py-2 gap-0.5 transition-all
+                ${activePage === n.id ? 'text-gold' : 'text-text3 hover:text-text2'}`}>
+              <span className="text-xl leading-none">{n.icon}</span>
+              <span className="text-[10px] font-bold">{n.label}</span>
+            </button>
+          ))}
+        </div>
       </nav>
+
     </div>
   )
 }

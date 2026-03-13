@@ -171,6 +171,7 @@ export default function QnAPage() {
           ['faq', '📚 מאגר הלכה (FAQ)'],
           ['ai', '🤖 רב AI'],
           ['videos', '🎥 סרטוני הכשרה'],
+          ['book', '📚 ספר הכשרות'],
           ...(isAdmin || isSenior ? [['all', `📋 כל השאלות (${globalQ.length})`]] : []),
         ].map(([k,l]) => (
           <button key={k} onClick={()=>setTab(k)} className={`ftab ${tab===k?'active':''}`}>{l}</button>
@@ -178,6 +179,29 @@ export default function QnAPage() {
       </div>
 
       {tab === 'videos' && <VideosPage />}
+
+      {tab === 'book' && (
+        <div className="space-y-4">
+          {bookUrl ? (
+            <a href={bookUrl} target="_blank" rel="noreferrer"
+              className="card p-5 flex items-center gap-4 border-blue-500/30 bg-blue-900/10 hover:border-blue-400/60 transition-all cursor-pointer no-underline block">
+              <span className="text-4xl">📚</span>
+              <div className="flex-1">
+                <div className="font-bold">ספר הכשרות — פסח תשפ"ו</div>
+                <div className="text-text3 text-xs mt-1 truncate">{bookUrl}</div>
+              </div>
+              <span className="badge badge-blue">פתח ←</span>
+            </a>
+          ) : (
+            <div className="card p-10 text-center text-text3">
+              <div className="text-4xl mb-3">📚</div>
+              <div className="font-bold">ספר הכשרות לא הוגדר עדיין</div>
+              <div className="text-xs mt-1">הגדרה בניהול יחידות</div>
+            </div>
+          )}
+        </div>
+      )}
+
 
       {tab === 'ai' && (
         <div className="space-y-3">
