@@ -12,16 +12,14 @@ export default async function handler(req) {
   try {
     const { messages, systemPrompt } = await req.json();
 
-    const system = `${systemPrompt}
+    // 1. הסרנו את ה-slice! עכשיו הוא קורא את כל 131 העמודים.
+    const system = `${systemPrompt}\n\n=== ספר ההכשרות הצבאי (פסח תשפ"ו) ===\n${HALACHA_DB}\n=== סוף הספר ===\n\nהנחיות: ענה בעברית קצרה וברורה. התבסס אך ורק על הספר המצורף. אם צריך אישור חריג, ציין זאת. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
 
-=== ספר ההכשרות הצבאי (פסח תשפ"ו) ===
-${HALACHA_DB.slice(0, 8000)}
-=== סוף הספר ===
-
-הנחיות: ענה בעברית קצרה וברורה. התבסס על הספר בלבד. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
+    // 2. שמנו את המודל החכם והמדויק ביותר (שזמין לך בחשבון)
+    const targetModel = "gemini-2.5-pro";
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
