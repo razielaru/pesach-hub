@@ -279,19 +279,29 @@ export default function Dashboard() {
           <div className="panel-head"><span className="panel-title">📊 פירוט מוכנות</span></div>
           <div className="p-5 space-y-4">
             {[
-              { label:'הכשרות', val: stats.total ? Math.round(stats.trained/stats.total*100) : 0,
-                color: stats.total && stats.trained/stats.total>=0.7 ? 'bg-green-500' : 'bg-orange-500' },
-              { label:'ניקיון', val: stats.cleanPct,
-                color: stats.cleanPct>=70 ? 'bg-green-500' : stats.cleanPct>=40 ? 'bg-orange-500' : 'bg-red-500' },
-              { label:'ציוד',   val: stats.missingEquip===0 ? 100 : Math.max(10, 100-stats.missingEquip*15),
-                color: stats.missingEquip===0 ? 'bg-green-500' : 'bg-red-500' },
-              { label:'חריגים', val: incidents.length===0 ? 100 : Math.max(10, 100-incidents.length*30),
-                color: incidents.length===0 ? 'bg-green-500' : 'bg-red-500' },
+              { label:'הכשרות',
+                val: stats.total ? Math.round(stats.trained/stats.total*100) : 0,
+                color: stats.total ? (stats.trained/stats.total>=0.7?'bg-green-500':'bg-orange-500') : 'bg-border2' },
+              { label:'ניקיון',
+                val: stats.cleanPct,
+                color: stats.cleanPct>=70?'bg-green-500':stats.cleanPct>=40?'bg-orange-500':stats.cleanPct>0?'bg-red-500':'bg-border2' },
+              // ציוד: 0% כשאין ציוד כלל, 100% רק אם יש ציוד ואין חסרים
+              { label:'ציוד',
+                val: noData ? 0 : stats.missingEquip===0 && stats.total===0 ? 0 : stats.missingEquip===0 ? 100 : Math.max(5, 100-stats.missingEquip*15),
+                color: noData||stats.total===0 ? 'bg-border2' : stats.missingEquip===0?'bg-green-500':'bg-red-500',
+                text: noData ? 'אין נתונים' : stats.missingEquip===0 && stats.total===0 ? 'אין נתונים' : null },
+              // חריגים: 0% כשאין כוח אדם (אין ממה לדווח), 100% רק אם יש כ"א ואין חריגים
+              { label:'חריגים',
+                val: noData ? 0 : incidents.length===0 && stats.total===0 ? 0 : incidents.length===0 ? 100 : Math.max(5, 100-incidents.length*30),
+                color: noData||stats.total===0 ? 'bg-border2' : incidents.length===0?'bg-green-500':'bg-red-500',
+                text: noData ? 'אין נתונים' : incidents.length===0 && stats.total===0 ? 'אין נתונים' : null },
             ].map(item=>(
               <div key={item.label}>
                 <div className="flex justify-between text-xs text-text2 mb-1">
                   <span>{item.label}</span>
-                  <span className="font-bold">{item.val}%</span>
+                  <span className={`font-bold ${item.text?'text-text3':''}`}>
+                    {item.text || item.val+'%'}
+                  </span>
                 </div>
                 <div className="pbar"><div className={`pbar-fill ${item.color}`} style={{width:`${item.val}%`}}/></div>
               </div>
