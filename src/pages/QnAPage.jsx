@@ -270,7 +270,7 @@ export default function QnAPage() {
 
       {tab === 'all' && (isAdmin||isSenior) && (
         <div className="space-y-3">
-          {globalQ.filter(q=>q.question!=='__training_book__').map(q => <QuestionCard key={q.id} q={q} canAnswer={true} onAnswer={()=>{setAnswerModal(q);setAnswerText(q.answer||'')}} />)}
+          {globalQ.filter(q=>q.question!=='__training_book__').map(q => <QuestionCard key={q.id} q={q} canAnswer={true} canDelete={isAdmin} onDelete={()=>deleteQuestion(q.id)} onAnswer={()=>{setAnswerModal(q);setAnswerText(q.answer||'')}} />)}
         </div>
       )}
 
@@ -309,7 +309,7 @@ export default function QnAPage() {
   )
 }
 
-function QuestionCard({ q, canAnswer, onAnswer }) {
+function QuestionCard({ q, canAnswer, onAnswer, canDelete, onDelete }) {
   return (
     <div className="card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -319,6 +319,7 @@ function QuestionCard({ q, canAnswer, onAnswer }) {
             {!q.answer && <span className="badge badge-orange">ממתין לתשובה</span>}
             {q.answer && <span className="badge badge-green">נענה ✓</span>}
             {q.is_faq && <span className="badge badge-blue">FAQ</span>}
+            {q.unit_id && <span className="badge badge-dim text-xs">{q.unit_id}</span>}
           </div>
           <p className="font-bold text-sm mb-2">❓ {q.question}</p>
           {q.answer && (
@@ -329,7 +330,10 @@ function QuestionCard({ q, canAnswer, onAnswer }) {
           )}
           <div className="text-text3 text-xs mt-2">{new Date(q.created_at).toLocaleDateString('he-IL')}</div>
         </div>
-        {canAnswer && <button className="btn btn-green btn-sm flex-shrink-0" onClick={onAnswer}>✍️ {q.answer ? 'ערוך' : 'ענה'}</button>}
+        <div className="flex gap-1 flex-shrink-0">
+          {canAnswer && <button className="btn btn-green btn-sm" onClick={onAnswer}>✍️ {q.answer ? 'ערוך' : 'ענה'}</button>}
+          {canDelete && <button className="btn btn-red btn-sm" onClick={onDelete}>🗑</button>}
+        </div>
       </div>
     </div>
   )

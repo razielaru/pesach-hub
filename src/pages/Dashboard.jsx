@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import KpiCard from '../components/ui/KpiCard'
-import { getSubordinateUnits, UNITS } from '../lib/units'
+import { getLeafUnits, UNITS } from '../lib/units'
 
 const LOGO_CACHE = {}
 
@@ -29,8 +29,9 @@ export default function Dashboard() {
   }, [currentUnit])
 
   async function loadStats() {
+    try {
     const uid = currentUnit.id
-    const subs = getSubordinateUnits(uid)
+    const subs = getLeafUnits(uid)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [uid]
     const inF = q => ids.length === 1 ? q.eq('unit_id', ids[0]) : q.in('unit_id', ids)
 
@@ -40,10 +41,11 @@ export default function Dashboard() {
       inF(supabase.from('cleaning_areas').select('status,unit_id,updated_at')),
       inF(supabase.from('tasks').select('id,title,priority,status,assigned_by').neq('status','done').order('created_at',{ascending:false}).limit(4)),
       inF(supabase.from('incidents').select('id,title,severity,unit_id').eq('status','open').order('created_at',{ascending:false}).limit(3)),
-      // עמדות היחידה — לחישוב מוכנות כיסוי
-      ids.length === 1
+      // עמדות היחידה — לחישוב מוכנות כיסוי (עם fallback אם טבלה לא קיימת)
+      (ids.length === 1
         ? supabase.from('unit_posts').select('id,required,unit_id').eq('unit_id', ids[0])
-        : supabase.from('unit_posts').select('id,required,unit_id').in('unit_id', ids),
+        : supabase.from('unit_posts').select('id,required,unit_id').in('unit_id', ids)
+      ).catch(() => ({ data: [] })),
       // לצורך זיהוי פעילות אחרונה
       inF(supabase.from('personnel').select('unit_id,created_at').order('created_at',{ascending:false}).limit(200)),
       inF(supabase.from('incidents').select('unit_id,created_at').order('created_at',{ascending:false}).limit(100)),
@@ -124,6 +126,10 @@ export default function Dashboard() {
     }
 
     setLoading(false)
+    } catch(err) {
+      console.error('loadStats error:', err)
+      setLoading(false)
+    }
   }
 
   async function loadLogo() {
