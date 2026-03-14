@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import { getSubordinateUnits } from '../lib/units'
+import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
 
@@ -18,7 +18,7 @@ export default function EquipmentPage() {
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
 
   async function load() {
-    const subs = getSubordinateUnits(currentUnit.id)
+    const subs = getLeafUnits(currentUnit.id)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
 
     let eqQuery = supabase.from('equipment').select('*').order('name')

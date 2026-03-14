@@ -233,8 +233,8 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
           {[
             { label:'הכשרה', val:avgTrained, color:avgTrained>=70?'bg-green-500':avgTrained>=50?'bg-orange-500':'bg-red-500', icon:'🎓' },
             { label:'ניקיון', val:avgClean,   color:avgClean>=70?'bg-green-500':avgClean>=50?'bg-orange-500':'bg-red-500',     icon:'🧹' },
-            { label:'ציוד',   val:totalMissing===0?100:Math.max(0,100-totalMissing*8), color:totalMissing===0?'bg-green-500':totalMissing<=3?'bg-orange-500':'bg-red-500', icon:'📦', text:totalMissing===0?'מלא':`חסר ${totalMissing}` },
-            { label:'חריגים', val:totalInc===0?100:Math.max(0,100-totalInc*15), color:totalInc===0?'bg-green-500':totalInc<=2?'bg-orange-500':'bg-red-500', icon:'🆘', text:totalInc===0?'נקי':`${totalInc} פתוחים` },
+            { label:'ציוד',   val:totals.length===0?0:totalMissing===0?100:Math.max(0,100-totalMissing*8), color:totals.length===0?'bg-border2':totalMissing===0?'bg-green-500':totalMissing<=3?'bg-orange-500':'bg-red-500', icon:'📦', text:totals.length===0?'אין נתונים':totalMissing===0?'מלא':`חסר ${totalMissing}` },
+            { label:'חריגים', val:totals.length===0?0:totalInc===0?100:Math.max(0,100-totalInc*15), color:totals.length===0?'bg-border2':totalInc===0?'bg-green-500':totalInc<=2?'bg-orange-500':'bg-red-500', icon:'🆘', text:totals.length===0?'אין נתונים':totalInc===0?'נקי':`${totalInc} פתוחים` },
           ].map(item => (
             <div key={item.label} className="space-y-1.5">
               <div className="flex justify-between text-xs">

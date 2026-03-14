@@ -2,22 +2,26 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
-import { getSubordinateUnits } from '../lib/units'
+import { getLeafUnits } from '../lib/units'
 
 export default function TrainingPage() {
   const { currentUnit, showToast } = useStore()
   const [people, setPeople] = useState([])
   const [filter, setFilter] = useState('all')
+  const [posts, setPosts]   = useState([])
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
   async function load() {
-    const subs = getSubordinateUnits(currentUnit.id)
+    const subs = getLeafUnits(currentUnit.id)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
-    const query = ids.length === 1
-      ? supabase.from('personnel').select('*').eq('unit_id', ids[0])
-      : supabase.from('personnel').select('*').in('unit_id', ids)
-    const { data } = await query.order('name')
-    setPeople(data || [])
+    const [persRes, postsRes] = await Promise.all([
+      ids.length === 1
+        ? supabase.from('personnel').select('*').eq('unit_id', ids[0])
+        : supabase.from('personnel').select('*').in('unit_id', ids),
+      supabase.from('unit_posts').select('*').eq('unit_id', currentUnit.id),
+    ])
+    setPeople(persRes.data || [])
+    setPosts(postsRes.data || [])
   }
   async function setTr(id, status) {
     const updates = { training_status: status }

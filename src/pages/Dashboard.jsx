@@ -34,12 +34,16 @@ export default function Dashboard() {
     const ids = subs.length > 0 ? subs.map(u => u.id) : [uid]
     const inF = q => ids.length === 1 ? q.eq('unit_id', ids[0]) : q.in('unit_id', ids)
 
-    const [pers, equip, areas, openTasks, openInc, lastPers, lastInc, lastClean] = await Promise.all([
+    const [pers, equip, areas, openTasks, openInc, postsRes, lastPers, lastInc, lastClean] = await Promise.all([
       inF(supabase.from('personnel').select('status,training_status,unit_id')),
       inF(supabase.from('equipment').select('have,need,unit_id')),
       inF(supabase.from('cleaning_areas').select('status,unit_id,updated_at')),
       inF(supabase.from('tasks').select('id,title,priority,status,assigned_by').neq('status','done').order('created_at',{ascending:false}).limit(4)),
       inF(supabase.from('incidents').select('id,title,severity,unit_id').eq('status','open').order('created_at',{ascending:false}).limit(3)),
+      // עמדות היחידה — לחישוב מוכנות כיסוי
+      ids.length === 1
+        ? supabase.from('unit_posts').select('id,required,unit_id').eq('unit_id', ids[0])
+        : supabase.from('unit_posts').select('id,required,unit_id').in('unit_id', ids),
       // לצורך זיהוי פעילות אחרונה
       inF(supabase.from('personnel').select('unit_id,created_at').order('created_at',{ascending:false}).limit(200)),
       inF(supabase.from('incidents').select('unit_id,created_at').order('created_at',{ascending:false}).limit(100)),
@@ -61,10 +65,41 @@ export default function Dashboard() {
     setIncidents(openInc.data||[])
 
     // ── מדד מוכנות לפסח ──
+    const posts = postsRes.data || []
+    const hasData = p.length > 0 || a.length > 0 || e.length > 0
+    if (!hasData) { setReadiness(-1); return }
+
+    // הכשרה
     const trainedPct = p.length ? Math.round(trained/p.length*100) : 0
-    const equipScore = missingEquip === 0 ? 100 : Math.max(0, 100 - missingEquip * 12)
-    const incScore   = openIncCount === 0 ? 100 : Math.max(0, 100 - openIncCount * 25)
-    const r = Math.round(trainedPct*0.35 + cleanPct*0.25 + equipScore*0.25 + incScore*0.15)
+
+    // זמינות כוח אדם — "אינו זמין" מוריד
+    const unavailablePct = p.length ? Math.round(p.filter(x=>x.status==='unavailable').length/p.length*100) : 0
+    const personnelScore = p.length ? Math.max(0, 100 - unavailablePct * 1.5) : 0
+
+    // כיסוי עמדות — עמדה ללא כוח אדם מורידה
+    let postScore = 100
+    if (posts.length > 0) {
+      const availPeople = p.filter(x=>x.status!=='unavailable')
+      const totalRequired = posts.reduce((s,post)=>s+post.required,0)
+      const totalCovered = Math.min(availPeople.length, totalRequired)
+      postScore = totalRequired > 0 ? Math.round(totalCovered/totalRequired*100) : 100
+    }
+
+    // ציוד
+    const hasEquip = e.length > 0
+    const equipScore = !hasEquip ? null : missingEquip === 0 ? 100 : Math.max(0, 100 - missingEquip * 12)
+
+    // ניקיון
+    const hasClean = a.length > 0
+
+    // חישוב משוקלל
+    let total = 0, weight = 0
+    if (p.length > 0)       { total += trainedPct    * 0.25; weight += 0.25 }
+    if (p.length > 0)       { total += personnelScore * 0.15; weight += 0.15 }
+    if (posts.length > 0)   { total += postScore      * 0.20; weight += 0.20 }
+    if (hasClean)           { total += cleanPct       * 0.20; weight += 0.20 }
+    if (hasEquip)           { total += equipScore     * 0.20; weight += 0.20 }
+    const r = weight > 0 ? Math.round(total / weight) : 0
     setReadiness(r)
 
     // ── יחידות ללא דיווח (24 שעות) — רק לאוגדות / פיקוד ──
@@ -98,9 +133,11 @@ export default function Dashboard() {
 
   const priColor = { urgent:'badge badge-red', high:'badge badge-orange', normal:'badge badge-blue' }
   const priLabel = { urgent:'דחוף', high:'גבוה', normal:'בינוני' }
-  const readinessColor = readiness >= 80 ? 'text-green-400' : readiness >= 60 ? 'text-orange-400' : 'text-red-400'
-  const readinessBg    = readiness >= 80 ? 'bg-green-500'  : readiness >= 60 ? 'bg-orange-500'  : 'bg-red-500'
-  const readinessLabel = readiness >= 80 ? 'מוכן לפסח ✅'  : readiness >= 60 ? 'בתהליך 🔄'      : 'דורש טיפול ⚠️'
+  const noData = readiness === -1
+  const readinessColor = noData ? 'text-text3' : readiness >= 80 ? 'text-green-400' : readiness >= 60 ? 'text-orange-400' : 'text-red-400'
+  const readinessBg    = noData ? 'bg-border2'  : readiness >= 80 ? 'bg-green-500'  : readiness >= 60 ? 'bg-orange-500'  : 'bg-red-500'
+  const readinessLabel = noData ? 'טרם הוזנו נתונים' : readiness >= 80 ? 'מוכן לפסח ✅' : readiness >= 60 ? 'בתהליך 🔄' : 'דורש טיפול ⚠️'
+  const readinessDisplay = noData ? '—' : readiness + '%'
 
   function timeSince(ts) {
     const m = Math.floor((Date.now() - new Date(ts)) / 60000)
@@ -122,24 +159,6 @@ export default function Dashboard() {
   return (
     <div className="space-y-5">
 
-      {/* ── Operational Status Bar ── */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {[
-          { icon:'🕐', label:'ימים לפסח', val: days, valCls: days<=7?'text-red-400':days<=14?'text-orange-400':'text-gold' },
-          { icon:'📊', label:'מוכנות', val:`${readiness}%`, valCls: readinessColor },
-          { icon:'👥', label:'מוכשרים', val:`${stats.total?Math.round(stats.trained/stats.total*100):0}%`, valCls:'text-green-400' },
-          { icon:'🧹', label:'ניקיון', val:`${stats.cleanPct}%`, valCls: stats.cleanPct>=70?'text-green-400':stats.cleanPct>=40?'text-orange-400':'text-red-400' },
-          { icon:'📦', label:'ציוד חסר', val: stats.missingEquip, valCls: stats.missingEquip===0?'text-green-400':'text-red-400' },
-          { icon:'🆘', label:'חריגים', val: incidents.length, valCls: incidents.length===0?'text-green-400':'text-red-400 animate-pulse' },
-        ].map(item=>(
-          <div key={item.label} className="card p-3 text-center border border-border1">
-            <div className="text-lg mb-0.5">{item.icon}</div>
-            <div className={`text-xl font-black leading-none ${item.valCls}`}>{item.val}</div>
-            <div className="text-text3 text-[10px] mt-1">{item.label}</div>
-          </div>
-        ))}
-      </div>
-
       {/* ── Hero ── */}
       <div className="card p-5 bg-gradient-to-l from-[#1a2040] to-bg2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -157,10 +176,10 @@ export default function Dashboard() {
         {/* מדד מוכנות */}
         <div className="flex items-center gap-4 flex-shrink-0">
           <div className="text-center">
-            <div className={`text-5xl font-black leading-none ${readinessColor}`}>{readiness}%</div>
+            <div className={`text-5xl font-black leading-none ${readinessColor}`}>{readinessDisplay}</div>
             <div className="text-text3 text-xs mt-1">{readinessLabel}</div>
             <div className="w-32 pbar h-2.5 rounded-full mt-2">
-              <div className={`pbar-fill ${readinessBg} rounded-full`} style={{width:`${readiness}%`}}/>
+              <div className={`pbar-fill ${readinessBg} rounded-full`} style={{width:`${readinessDisplay}`}}/>
             </div>
           </div>
           <div className="text-center bg-bg3 rounded-2xl px-6 py-3 border border-border2">
@@ -168,6 +187,24 @@ export default function Dashboard() {
             <div className="text-text3 text-xs mt-1">ימים לפסח</div>
           </div>
         </div>
+      </div>
+
+      {/* ── KPI Bar ── */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {[
+          { icon:'🕐', label:'ימים לפסח', val: days, valCls: days<=7?'text-red-400':days<=14?'text-orange-400':'text-gold' },
+          { icon:'📊', label:'מוכנות', val:`${readinessDisplay}`, valCls: readinessColor },
+          { icon:'👥', label:'מוכשרים', val:`${stats.total?Math.round(stats.trained/stats.total*100):0}%`, valCls:'text-green-400' },
+          { icon:'🧹', label:'ניקיון', val:`${stats.cleanPct}%`, valCls: stats.cleanPct>=70?'text-green-400':stats.cleanPct>=40?'text-orange-400':'text-red-400' },
+          { icon:'📦', label:'ציוד חסר', val: stats.missingEquip, valCls: stats.missingEquip===0?'text-green-400':'text-red-400' },
+          { icon:'🆘', label:'חריגים', val: incidents.length, valCls: incidents.length===0?'text-green-400':'text-red-400 animate-pulse' },
+        ].map(item=>(
+          <div key={item.label} className="card p-3 text-center border border-border1">
+            <div className="text-lg mb-0.5">{item.icon}</div>
+            <div className={`text-xl font-black leading-none ${item.valCls}`}>{item.val}</div>
+            <div className="text-text3 text-[10px] mt-1">{item.label}</div>
+          </div>
+        ))}
       </div>
 
       {/* ── יחידות ללא דיווח ── */}
@@ -255,7 +292,7 @@ export default function Dashboard() {
             ))}
             <div className="pt-2 border-t border-border1 flex items-center justify-between">
               <span className="text-text3 text-xs">מדד כולל</span>
-              <span className={`text-xl font-black ${readinessColor}`}>{readiness}%</span>
+              <span className={`text-xl font-black ${readinessColor}`}>{readinessDisplay}</span>
             </div>
           </div>
         </div>

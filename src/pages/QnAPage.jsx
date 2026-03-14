@@ -45,9 +45,10 @@ export default function QnAPage() {
         ? supabase.from('qna').select('*').eq('is_faq', false)
             .neq('question','__training_book__').order('created_at',{ascending:false})
         : Promise.resolve({ data: [] }),
+      // ספר הכשרות נשמר תמיד ב-unit_id='global' — גלוי לכולם
       supabase.from('qna').select('answer')
         .eq('question','__training_book__')
-        .eq('unit_id', currentUnit.id)
+        .eq('unit_id', 'pikud')
         .maybeSingle(),
     ])
     setQuestions(q.data || [])
