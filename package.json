@@ -16,8 +16,9 @@
     "zustand": "^4.4.7",
     "lucide-react": "^0.309.0",
     "date-fns": "^3.1.0",
-"clsx": "^2.1.0",
-    "xlsx": "^0.18.5"
+    "clsx": "^2.1.0",
+    "xlsx": "^0.18.5",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
