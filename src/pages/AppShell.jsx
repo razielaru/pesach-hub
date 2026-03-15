@@ -76,7 +76,7 @@ export default function AppShell() {
   function handleGateLogin() {
     if (!selectedPersonId) return
     const person = gatePeople.find(p => p.id === selectedPersonId)
-    const isPrivileged = ['רב', 'קצין בקרה'].includes(person.role)
+    const isPrivileged = ['רב', 'קצין שליטה'].includes(person.role)
     
     if (isPrivileged) {
       // חייב קוד PIN — אם לא הוגדר קוד בכלל, חסום כניסה
@@ -178,7 +178,7 @@ export default function AppShell() {
   // ── מסך החסימה וההזדהות ──
   if (showGate) {
     const selected = gatePeople.find(p => p.id === selectedPersonId)
-    const needsPin = selected && ['רב', 'קצין בקרה'].includes(selected.role)
+    const needsPin = selected && ['רב', 'קצין שליטה'].includes(selected.role)
     
     return (
       <div className="min-h-screen bg-bg0 flex items-center justify-center p-4" dir="rtl">
