@@ -130,21 +130,18 @@ export default function TrainingPage() {
 
   function renderPost(post, isChild = false) {
     const children = posts.filter(p => p.parent_id === post.id)
-    
-    // ── פה שינינו את ברירת המחדל לסגור! ──
-    const isExpanded = expanded[post.id] === true 
-    
+    const isExpanded = expanded[post.id] === true // כיווץ כברירת מחדל
     const assignedPeople = people.filter(p => p.post_id === post.id)
 
     return (
       <div key={post.id} className={`card border ${isChild ? 'border-l-4 border-l-gold/50 bg-bg1/50 my-2 mr-6' : 'border-border1 mb-4'} overflow-hidden`}>
         <div className="bg-bg3 px-4 py-3 flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-3">
-            {children.length > 0 && (
-              <button onClick={() => toggleExpand(post.id)} className="w-6 h-6 flex items-center justify-center bg-bg2 rounded text-text2 hover:text-gold transition-colors">
-                {isExpanded ? '▼' : '◀'}
-              </button>
-            )}
+            {/* החץ מופיע תמיד עכשיו! */}
+            <button onClick={() => toggleExpand(post.id)} className="w-6 h-6 flex items-center justify-center bg-bg2 rounded text-text2 hover:text-gold transition-colors">
+              {isExpanded ? '▼' : '◀'}
+            </button>
+            
             <span className="font-black text-lg">{post.name}</span>
             <span className="badge badge-dim text-xs">{post.type}</span>
             <button onClick={() => openEditPost(post)} className="text-text3 hover:text-gold transition-colors p-1" title="ערוך מקום ושיוך">
