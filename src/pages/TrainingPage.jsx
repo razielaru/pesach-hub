@@ -12,7 +12,9 @@ export default function TrainingPage() {
   const [posts,  setPosts]  = useState([])
   const [expanded, setExpanded] = useState({})
   
+  // ניהול המודל (הוספה / עריכה)
   const [postModal, setPostModal] = useState(false)
+  const [editPostId, setEditPostId] = useState(null)
   const [postForm, setPostForm] = useState({ name: '', type: 'מפח״ט', parent_id: '', unitId: '' })
 
   const leafUnits = getLeafUnits(currentUnit.id)
@@ -57,24 +59,59 @@ export default function TrainingPage() {
     load()
   }
 
+  // ── פתיחת מודל להוספה ──
+  function openAddPost() {
+    setEditPostId(null)
+    setPostForm({ name: '', type: 'מפח״ט', parent_id: '', unitId: currentUnit.id })
+    setPostModal(true)
+  }
+
+  // ── פתיחת מודל לעריכה (גלגל שיניים) ──
+  function openEditPost(post) {
+    setEditPostId(post.id)
+    setPostForm({ 
+      name: post.name, 
+      type: post.type || 'כללי', 
+      parent_id: post.parent_id || '', 
+      unitId: post.unit_id 
+    })
+    setPostModal(true)
+  }
+
+  // ── שמירה (הוספה או עדכון) ──
   async function savePost() {
     if (!postForm.name) return
     const targetUnit = postForm.unitId || currentUnit.id
-    await supabase.from('unit_posts').insert({
+    
+    const payload = {
       unit_id: targetUnit, 
       name: postForm.name, 
       type: postForm.type,
-      parent_id: postForm.parent_id || null,
-      status: 'none'
-    })
-    showToast(`מקום "${postForm.name}" נוסף ✅`, 'green')
-    setPostForm({ name: '', type: 'מפח״ט', parent_id: '', unitId: '' })
+      parent_id: postForm.parent_id || null
+    }
+
+    if (editPostId) {
+      // מצב עריכה
+      const { error } = await supabase.from('unit_posts').update(payload).eq('id', editPostId)
+      if (error) showToast('שגיאה בעדכון המקום', 'red')
+      else showToast(`המקום עודכן בהצלחה ✅`, 'green')
+    } else {
+      // מצב יצירה
+      payload.status = 'none'
+      const { error } = await supabase.from('unit_posts').insert(payload)
+      if (error) showToast('שגיאה ביצירת המקום', 'red')
+      else showToast(`מקום "${postForm.name}" נוסף ✅`, 'green')
+    }
+    
+    setPostModal(false)
     load()
   }
 
   async function deletePost(id) {
-    if (!confirm('למחוק מקום זה? כל המקומות שתחתיו יימחקו גם כן!')) return
+    if (!confirm('למחוק מקום זה? כל תתי-המקומות שתחתיו יימחקו גם כן!')) return
     await supabase.from('unit_posts').delete().eq('id', id)
+    showToast('המקום נמחק 🗑️', 'orange')
+    setPostModal(false)
     load()
   }
 
@@ -113,6 +150,11 @@ export default function TrainingPage() {
             )}
             <span className="font-black text-lg">{post.name}</span>
             <span className="badge badge-dim text-xs">{post.type}</span>
+            
+            {/* כפתור העריכה (גלגל שיניים) - חדש! */}
+            <button onClick={() => openEditPost(post)} className="text-text3 hover:text-gold transition-colors p-1" title="ערוך מקום ושיוך">
+              ⚙️
+            </button>
           </div>
           <KasheringButtons post={post} />
         </div>
@@ -159,8 +201,8 @@ export default function TrainingPage() {
           <h2 className="text-xl font-black">🎓 הכשרת מקומות ושיבוץ צוותים</h2>
           <p className="text-text3 text-sm">הגדר מקומות (מפח"ט, פלוגה, מטבח), עדכן את הסטטוס שלהם ושבץ חיילים.</p>
         </div>
-        <button onClick={() => setPostModal(true)} className="btn btn-blue bg-blue-900/40 border-blue-500/50 text-blue-300">
-          ⚙ ניהול מקומות
+        <button onClick={openAddPost} className="btn btn-blue bg-blue-900/40 border-blue-500/50 text-blue-300">
+          ➕ הוסף מקום חדש
         </button>
       </div>
 
@@ -177,14 +219,14 @@ export default function TrainingPage() {
       </div>
 
       <div className="space-y-4">
-        {rootPosts.length === 0 && <div className="text-center text-text3 py-10">אין מקומות מוגדרים. לחץ על "ניהול מקומות".</div>}
+        {rootPosts.length === 0 && <div className="text-center text-text3 py-10">אין מקומות מוגדרים. לחץ על "הוסף מקום חדש".</div>}
         {rootPosts.map(post => renderPost(post))}
       </div>
 
-      <Modal open={postModal} onClose={() => setPostModal(false)} title="⚙ ניהול היררכיית מקומות">
+      {/* חלון ההוספה/עריכה המאוחד */}
+      <Modal open={postModal} onClose={() => setPostModal(false)} title={editPostId ? '⚙️ עריכת מקום ושיוך' : '➕ הוספת מקום חדש'}>
         <div className="space-y-4">
           <div className="border border-border1 rounded-xl p-4 bg-bg3/50 space-y-3">
-            <p className="text-xs text-gold font-bold">➕ הוסף מקום חדש</p>
             <div className="grid grid-cols-2 gap-3">
               <input className="form-input col-span-2" placeholder="שם המקום (לדוג: עפרה, 408, מטבח חלבי)" value={postForm.name} onChange={e => setPostForm(f => ({...f, name: e.target.value}))} />
               
@@ -196,10 +238,12 @@ export default function TrainingPage() {
               </div>
 
               <div>
-                <label className="text-[10px] text-text3 mb-1 block">שייך תחת (אופציונלי)</label>
-                <select className="form-input" value={postForm.parent_id} onChange={e => setPostForm(f => ({...f, parent_id: e.target.value}))}>
+                <label className="text-[10px] text-text3 mb-1 block">שייך תחת (אבא)</label>
+                <select className="form-input text-gold border-gold/50" value={postForm.parent_id} onChange={e => setPostForm(f => ({...f, parent_id: e.target.value}))}>
                   <option value="">-- מקום ראשי (עצמאי) --</option>
-                  {posts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.type})</option>)}
+                  {posts
+                    .filter(p => p.id !== editPostId) // לא יכול להיות אבא של עצמו
+                    .map(p => <option key={p.id} value={p.id}>{p.name} ({p.type})</option>)}
                 </select>
               </div>
             </div>
@@ -210,20 +254,20 @@ export default function TrainingPage() {
                 {leafUnits.map(u => <option key={u.id} value={u.id}>{u.icon} {u.name}</option>)}
               </select>
             )}
-            <button className="btn btn-blue w-full mt-2" onClick={savePost}>הוסף מקום למאגר</button>
-          </div>
-
-          <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-            <p className="text-xs text-text3 font-bold mb-2">רשימת המקומות למחיקה מהירה:</p>
-            {posts.map(post => (
-              <div key={post.id} className="flex justify-between items-center bg-bg2 p-2 rounded text-sm">
-                <span>{post.name} <span className="text-text3 text-xs">({post.type})</span></span>
-                <button onClick={() => deletePost(post.id)} className="text-red-400">🗑</button>
-              </div>
-            ))}
+            
+            <div className="flex justify-between items-center mt-4">
+              {editPostId ? (
+                <button onClick={() => deletePost(editPostId)} className="btn btn-sm border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white">
+                  🗑️ מחק מקום זה
+                </button>
+              ) : <div />}
+              
+              <button className="btn btn-blue" onClick={savePost}>
+                {editPostId ? '💾 שמור שינויים' : '➕ הוסף למאגר'}
+              </button>
+            </div>
           </div>
         </div>
-        <ModalButtons onClose={() => setPostModal(false)} onSave={() => setPostModal(false)} saveLabel="סגור" />
       </Modal>
 
     </div>
