@@ -79,7 +79,12 @@ export default function AppShell() {
     const isPrivileged = ['רב', 'קצין בקרה'].includes(person.role)
     
     if (isPrivileged) {
-      if (person.pin_code && person.pin_code !== pinInput) {
+      // חייב קוד PIN — אם לא הוגדר קוד בכלל, חסום כניסה
+      if (!person.pin_code) {
+        setPinError(true)
+        return // אין קוד מוגדר — פנה למנהל
+      }
+      if (person.pin_code !== pinInput) {
         setPinError(true)
         return
       }
