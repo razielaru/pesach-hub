@@ -14,6 +14,7 @@ import CommandPage from './CommandPage'
 import UnitManagePage from './UnitManagePage'
 import ChatPage from './ChatPage'
 
+// הסדר החדש שביקשת למובייל
 const BOTTOM_NAV = [
   { id: 'dashboard', label: 'ראשי',       icon: '🏠' },
   { id: 'personnel', label: 'כוח אדם',    icon: '👥' },
@@ -24,17 +25,17 @@ const BOTTOM_NAV = [
 
 const FULL_NAV = [
   { id: 'dashboard',  label: '🏠 ראשי',             admin: false, seniorOnly: false },
-  { id: 'personnel',  label: '👥 כוח אדם',           admin: false, seniorOnly: false },
-  { id: 'training',   label: '🎓 הכשרות',            admin: false, seniorOnly: false },
-  { id: 'equipment',  label: '📦 ציוד',               admin: false, seniorOnly: false },
-  { id: 'cleaning',   label: '🧹 ניקיונות',          admin: false, seniorOnly: false },
-  { id: 'tasks',      label: '✅ משימות',             admin: false, seniorOnly: false },
-  { id: 'incidents',  label: '🆘 חריגים',             admin: false, seniorOnly: false },
+  { id: 'personnel',  label: '👥 כוח אדם',          admin: false, seniorOnly: false },
+  { id: 'training',   label: '🎓 הכשרות',           admin: false, seniorOnly: false },
+  { id: 'equipment',  label: '📦 ציוד',             admin: false, seniorOnly: false },
+  { id: 'cleaning',   label: '🧹 ניקיונות',         admin: false, seniorOnly: false },
+  { id: 'tasks',      label: '✅ משימות',           admin: false, seniorOnly: false },
+  { id: 'incidents',  label: '🆘 חריגים',           admin: false, seniorOnly: false },
   { id: 'qna',        label: '⚖️ שו"ת הלכתי',        admin: false, seniorOnly: false },
-  { id: 'timeline',   label: '📅 לוח שנה',            admin: false, seniorOnly: false },
-  { id: 'chat',       label: "💬 צ'אט יחידות",       admin: false, seniorOnly: false },
-  { id: 'command',    label: '⭐ פיקוד על',           admin: false, seniorOnly: true  }, // אוגדה + פיקוד
-  { id: 'unitmanage', label: '⚙ ניהול',              admin: true,  seniorOnly: false }, // פיקוד בלבד
+  { id: 'timeline',   label: '📅 לוח שנה',          admin: false, seniorOnly: false },
+  { id: 'chat',       label: "💬 צ'אט יחידות",      admin: false, seniorOnly: false },
+  { id: 'command',    label: '⭐ פיקוד על',         admin: false, seniorOnly: true  }, // אוגדה + פיקוד
+  { id: 'unitmanage', label: '⚙ ניהול',             admin: true,  seniorOnly: false }, // פיקוד בלבד
 ]
 
 export default function AppShell() {
@@ -226,15 +227,19 @@ export default function AppShell() {
         </div>
       </main>
 
-      {/* Bottom nav */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-bg1 border-t border-border1 z-40">
-        <div className="flex">
+      {/* Bottom nav - מותאם לישראל וקריא יותר */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-bg1 border-t border-border1 z-40 pb-safe shadow-[0_-10px_20px_rgba(0,0,0,0.3)]" dir="rtl">
+        <div className="flex h-16 px-1">
           {BOTTOM_NAV.map(n => (
             <button key={n.id} onClick={() => navTo(n.id)}
-              className={`flex-1 flex flex-col items-center py-2 gap-0.5 transition-all
-                ${activePage === n.id ? 'text-gold' : 'text-text3 hover:text-text2'}`}>
-              <span className="text-xl leading-none">{n.icon}</span>
-              <span className="text-[10px] font-bold">{n.label}</span>
+              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all rounded-xl
+                ${activePage === n.id ? 'text-gold' : 'text-gray-300 hover:text-white hover:bg-bg3/50'}`}>
+              <span className={`text-2xl transition-transform ${activePage === n.id ? 'scale-110 drop-shadow-[0_0_8px_rgba(245,200,66,0.6)]' : 'opacity-80'}`}>
+                {n.icon}
+              </span>
+              <span className={`text-[11px] font-bold ${activePage === n.id ? 'text-gold' : 'text-gray-300'}`}>
+                {n.label}
+              </span>
             </button>
           ))}
         </div>
