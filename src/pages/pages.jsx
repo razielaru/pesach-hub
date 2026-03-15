@@ -502,23 +502,41 @@ export function TimelinePage() {
 
 // ══ UNIT MANAGE ══
 export function UnitManagePage() {
-  const { currentUnit, showToast } = useStore()
+  const { currentUnit, showToast, isAdmin } = useStore()
   const [units, setUnits] = useState([])
   const [pinModal, setPinModal] = useState(null)
   const [pinVal, setPinVal] = useState('')
   const [bookModal, setBookModal] = useState(false)
   const [bookUrl, setBookUrl] = useState('')
   const [bookLoading, setBookLoading] = useState(false)
+  const [pushSubs, setPushSubs] = useState([])
 
   useEffect(() => { load() }, [])
 
   async function load() {
     const { data } = await supabase.from('units').select('*').order('name')
     setUnits(data || [])
+    // טען מנויי Push
+    const { data: subs } = await supabase.from('push_subscriptions').select('id,unit_id,created_at').order('created_at',{ascending:false})
+    setPushSubs(subs || [])
     // Load book URL from a settings key
     const { data: setting } = await supabase.from('qna')
       .select('answer').eq('question', '__training_book__').eq('unit_id','pikud').maybeSingle()
     if (setting?.answer) setBookUrl(setting.answer)
+  }
+
+  async function revokePush(subId) {
+    if (!confirm('לנתק מכשיר זה מהתראות?')) return
+    await supabase.from('push_subscriptions').delete().eq('id', subId)
+    showToast('מכשיר נותק ✅', 'green')
+    load()
+  }
+
+  async function revokeUnitPush(unitId) {
+    if (!confirm('לנתק את כל מכשירי היחידה מהתראות?')) return
+    await supabase.from('push_subscriptions').delete().eq('unit_id', unitId)
+    showToast('כל מכשירי היחידה נותקו ✅', 'green')
+    load()
   }
 
   async function uploadLogo(unitId, file) {
