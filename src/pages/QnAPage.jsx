@@ -45,7 +45,6 @@ export default function QnAPage() {
         ? supabase.from('qna').select('*').eq('is_faq', false)
             .neq('question','__training_book__').order('created_at',{ascending:false})
         : Promise.resolve({ data: [] }),
-      // ספר הכשרות נשמר תמיד ב-unit_id='global' — גלוי לכולם
       supabase.from('qna').select('answer')
         .eq('question','__training_book__')
         .eq('unit_id', 'pikud')
@@ -84,7 +83,6 @@ export default function QnAPage() {
     const userMsg = { role: 'user', content: text }
     const newMsgs = [...aiMessages, userMsg]
     
-    // בועה ריקה שמתחילה להתמלא
     setAiMessages([...newMsgs, { role: 'assistant', content: '' }])
     setAiInput('')
     setAiLoading(true)
@@ -100,46 +98,34 @@ export default function QnAPage() {
         })
       })
 
-      const contentType = res.headers.get('content-type') || ''
-      if (contentType.includes('application/json')) {
-        const data = await res.json()
-        if (data.text) {
-          setAiMessages(prev => { const updated = [...prev]; updated[updated.length - 1].content = data.text; return updated })
-          setAiLoading(false)
-          return
-        }
-      }
+      if (!res.ok) throw new Error('שגיאה בתקשורת מול השרת')
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder('utf-8')
-      let done = false
       let aiReply = ''
-      let buffer = ''
 
-      while (!done) {
-        const { value, done: readerDone } = await reader.read()
-        done = readerDone
-        if (value) {
-          buffer += decoder.decode(value, { stream: true })
-          
-          // מנגנון הזרמה חסין-תקלות: שולף מילים ישירות מהזרם גם אם הנתונים מגיעים בחלקים
-          const regex = /"text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g
-          let match
-          let lastIndex = 0
-          
-          while ((match = regex.exec(buffer)) !== null) {
-            let textPart = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-            aiReply += textPart
-            lastIndex = match.index + match[0].length
-            
-            setAiMessages(prev => {
-              const updated = [...prev]
-              updated[updated.length - 1].content = aiReply
-              return updated
-            })
-            aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      // לולאת הקריאה התקנית (ללא Json Parsing שישבור את הזרם)
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+            try {
+              const data = JSON.parse(line.replace('data: ', ''))
+              const textPart = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+              aiReply += textPart
+              setAiMessages(prev => {
+                const updated = [...prev]
+                updated[updated.length - 1].content = aiReply
+                return updated
+              })
+              aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+            } catch(e) {} // מתעלמים משורות חלקיות שנחתכו
           }
-          if (lastIndex > 0) buffer = buffer.substring(lastIndex)
         }
       }
     } catch (e) {
