@@ -7,20 +7,22 @@ import * as XLSX from 'xlsx'
 import { getLeafUnits, UNITS } from '../lib/units'
 
 const STATUS_LABEL = { available:'זמין', zoom:'זום', away:'הגב', leave:'שחרור', unavailable:'אינו זמין' }
-const STATUS_CLS   = { available:'badge-green', zoom:'badge-blue', away:'badge-orange', leave:'badge-red', unavailable:'badge-red' }
 const STATUS_ICON  = { available:'✅', zoom:'💻', away:'⬅️', leave:'🏠', unavailable:'❌' }
+const PRIVILEGED_ROLES = ['רב', 'קצין שליטה']
 
 function PersonnelTab() {
   const { currentUnit, showToast, isAdmin, isSenior } = useStore()
-  
-  // בדיקת הרשאות - מנהלים או מי שהזין PIN נכון
   const canEdit = isAdmin || isSenior || sessionStorage.getItem('canEdit') === 'true'
 
-  const [people, setPeople]       = useState([])
-  const [posts, setPosts]         = useState([]) 
-  const [modal,  setModal]        = useState(false)
-  const [form,   setForm]         = useState({ name:'', role:'סגל', status:'available', targetUnit:'', post_id:'', pin_code:'' })
-  const [search, setSearch]       = useState('')
+  const [people, setPeople]             = useState([])
+  const [posts, setPosts]               = useState([])
+  const [modal, setModal]               = useState(false)
+  const [editModal, setEditModal]       = useState(null)
+  const [contactModal, setContactModal] = useState(null)
+  const [form, setForm]                 = useState({ name:'', role:'סגל', status:'available', targetUnit:'', post_id:'', pin_code:'' })
+  const [editForm, setEditForm]         = useState({ name:'', pin_code:'' })
+  const [contacts, setContacts]         = useState([])
+  const [search, setSearch]             = useState('')
 
   const leafUnits = getLeafUnits(currentUnit.id)
   const canManageMultiple = leafUnits.length > 0
@@ -31,10 +33,15 @@ function PersonnelTab() {
     try {
       const ids = leafUnits.length > 0 ? leafUnits.map(u => u.id) : [currentUnit.id]
       const [persRes, postsRes] = await Promise.all([
-        ids.length === 1 ? supabase.from('personnel').select('*').eq('unit_id', ids[0]).order('name') : supabase.from('personnel').select('*').in('unit_id', ids).order('name'),
-        ids.length === 1 ? supabase.from('unit_posts').select('*').eq('unit_id', ids[0]).order('name') : supabase.from('unit_posts').select('*').in('unit_id', ids).order('name')
+        ids.length === 1
+          ? supabase.from('personnel').select('*').eq('unit_id', ids[0]).order('name')
+          : supabase.from('personnel').select('*').in('unit_id', ids).order('name'),
+        ids.length === 1
+          ? supabase.from('unit_posts').select('*').eq('unit_id', ids[0]).order('name')
+          : supabase.from('unit_posts').select('*').in('unit_id', ids).order('name')
       ])
-      setPeople(persRes.data || []); setPosts(postsRes.data || [])
+      setPeople(persRes.data || [])
+      setPosts(postsRes.data || [])
     } catch { setPeople([]); setPosts([]) }
   }
 
@@ -45,56 +52,88 @@ function PersonnelTab() {
       if (form.targetUnit) targetUnitId = form.targetUnit
       else { alert('בחר יחידה יעד'); return }
     }
-
     await supabase.from('personnel').insert({
-      unit_id: targetUnitId,
-      name: form.name, 
-      role: form.role,
-      status: form.status, 
-      post_id: form.post_id || null, 
-      training_status: 'none',
-      pin_code: ['רב', 'קצין בקרה'].includes(form.role) ? (form.pin_code || null) : null
+      unit_id: targetUnitId, name: form.name, role: form.role,
+      status: form.status, post_id: form.post_id || null, training_status: 'none',
+      pin_code: PRIVILEGED_ROLES.includes(form.role) ? (form.pin_code || null) : null
     })
-    
     showToast(`${form.name} נוסף ✅`, 'green')
     setModal(false)
     setForm({ name:'', role:'סגל', status:'available', targetUnit:'', post_id:'', pin_code:'' })
     load()
   }
 
+  function openEdit(p) {
+    setEditForm({ name: p.name, pin_code: p.pin_code || '' })
+    setEditModal(p)
+  }
+  async function saveEdit() {
+    if (!editForm.name) return
+    await supabase.from('personnel').update({
+      name: editForm.name,
+      pin_code: PRIVILEGED_ROLES.includes(editModal.role) ? (editForm.pin_code || null) : editModal.pin_code
+    }).eq('id', editModal.id)
+    showToast('עודכן ✅', 'green')
+    setEditModal(null)
+    load()
+  }
+
+  function openContacts(p) {
+    try {
+      const arr = p.contacts ? (typeof p.contacts === 'string' ? JSON.parse(p.contacts) : p.contacts) : []
+      setContacts(Array.isArray(arr) ? arr : [])
+    } catch { setContacts([]) }
+    setContactModal(p)
+  }
+  async function saveContacts() {
+    await supabase.from('personnel').update({ contacts: JSON.stringify(contacts) }).eq('id', contactModal.id)
+    showToast('ביינשים עודכנו ✅', 'green')
+    setContactModal(null)
+    load()
+  }
+  function addContact()         { setContacts(c => [...c, { name:'', phone:'' }]) }
+  function removeContact(i)     { setContacts(c => c.filter((_, j) => j !== i)) }
+  function updateContact(i, f, v) { setContacts(c => c.map((x, j) => j === i ? {...x, [f]: v} : x)) }
+
   async function setStatus(id, status) {
     await supabase.from('personnel').update({ status }).eq('id', id)
-    setPeople(p => p.map(x => x.id===id ? {...x,status} : x))
+    setPeople(p => p.map(x => x.id === id ? {...x, status} : x))
   }
-
   async function assignPost(personId, postId) {
     await supabase.from('personnel').update({ post_id: postId || null }).eq('id', personId)
-    setPeople(p => p.map(x => x.id === personId ? { ...x, post_id: postId || null } : x))
-    showToast('שיוך עודכן בהצלחה', 'green')
+    setPeople(p => p.map(x => x.id === personId ? {...x, post_id: postId || null} : x))
+    showToast('שיוך עודכן', 'green')
   }
-
   async function remove(id) {
     if (!confirm('למחוק איש צוות זה?')) return
     await supabase.from('personnel').delete().eq('id', id); load()
   }
 
+  function contactCount(p) {
+    if (!p.contacts) return 0
+    try {
+      const arr = typeof p.contacts === 'string' ? JSON.parse(p.contacts) : p.contacts
+      return Array.isArray(arr) ? arr.length : 0
+    } catch { return 0 }
+  }
+
   const counts = { available:0, zoom:0, away:0, leave:0, unavailable:0 }
-  people.forEach(p => { if (counts[p.status]!==undefined) counts[p.status]++ })
+  people.forEach(p => { if (counts[p.status] !== undefined) counts[p.status]++ })
   const filtered = search ? people.filter(p => p.name.includes(search) || p.role.includes(search)) : people
-  function unitLabel(uid) { return UNITS.find(u=>u.id===uid)?.name || '' }
+  function unitLabel(uid) { return UNITS.find(u => u.id === uid)?.name || '' }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between items-center gap-2">
-        <input className="form-input w-44" placeholder="חיפוש שם / תפקיד..." value={search} onChange={e=>setSearch(e.target.value)} />
-        {canEdit && <button className="btn" onClick={()=>setModal(true)}>+ הוסף איש צוות</button>}
+        <input className="form-input w-44" placeholder="חיפוש שם / תפקיד..." value={search} onChange={e => setSearch(e.target.value)} />
+        {canEdit && <button className="btn" onClick={() => setModal(true)}>+ הוסף איש צוות</button>}
       </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-        <KpiCard label="זמין" value={counts.available} color="green"/>
-        <KpiCard label="זום" value={counts.zoom} color="blue"/>
-        <KpiCard label="הגב" value={counts.away} color="orange"/>
-        <KpiCard label="שחרור" value={counts.leave} color="red"/>
+        <KpiCard label="זמין"      value={counts.available}   color="green"/>
+        <KpiCard label="זום"       value={counts.zoom}        color="blue"/>
+        <KpiCard label="הגב"       value={counts.away}        color="orange"/>
+        <KpiCard label="שחרור"     value={counts.leave}       color="red"/>
         <KpiCard label="אינו זמין" value={counts.unavailable} color="red"/>
       </div>
 
@@ -103,78 +142,151 @@ function PersonnelTab() {
           <div key={p.id} className={`card px-3 py-2.5 flex flex-wrap items-center gap-2 ${p.status==='unavailable'?'opacity-50':''}`}>
             <div className="min-w-0 flex-1">
               <div className="font-bold text-sm truncate">{p.name}</div>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-[10px] bg-bg2 text-text3 px-1.5 py-0.5 rounded">{p.role}</span>
-                {canManageMultiple && p.unit_id !== currentUnit.id && <span className="text-[10px] text-text3 px-1">· {unitLabel(p.unit_id)}</span>}
-                
+                {canManageMultiple && p.unit_id !== currentUnit.id && (
+                  <span className="text-[10px] text-text3 px-1">· {unitLabel(p.unit_id)}</span>
+                )}
                 {canEdit ? (
-                  <select className="bg-transparent border-none outline-none cursor-pointer text-gold text-[11px] hover:bg-bg3 rounded px-1 transition-colors w-32 truncate" value={p.post_id || ''} onChange={e => assignPost(p.id, e.target.value)} disabled={p.status === 'unavailable'}>
+                  <select className="bg-transparent border-none outline-none cursor-pointer text-gold text-[11px] hover:bg-bg3 rounded px-1 transition-colors w-32 truncate"
+                    value={p.post_id || ''} onChange={e => assignPost(p.id, e.target.value)} disabled={p.status === 'unavailable'}>
                     <option value="">ללא שיוך למקום</option>
-                    {posts.filter(post => !canManageMultiple || post.unit_id === p.unit_id).map(post => <option key={post.id} value={post.id}>{post.name}</option>)}
+                    {posts.filter(post => !canManageMultiple || post.unit_id === p.unit_id).map(post => (
+                      <option key={post.id} value={post.id}>{post.name}</option>
+                    ))}
                   </select>
                 ) : (
                   <span className="text-[11px] text-gold">{posts.find(x => x.id === p.post_id)?.name || 'ללא שיוך'}</span>
                 )}
+                {canEdit && (
+                  <button onClick={() => openContacts(p)}
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-border2 text-text3 hover:border-gold/50 hover:text-gold transition-all">
+                    👥 {contactCount(p) > 0 ? `${contactCount(p)} ביינשים` : '+ ביינש'}
+                  </button>
+                )}
               </div>
             </div>
-            
+
             <div className="flex gap-0.5 flex-shrink-0 ml-auto">
-              {Object.entries(STATUS_ICON).map(([k,icon]) => (
-                <button key={k} title={STATUS_LABEL[k]} onClick={()=>setStatus(p.id,k)} className={`text-sm px-0.5 transition-all leading-none ${p.status===k?'opacity-100 scale-110':'opacity-25 hover:opacity-60'}`}>{icon}</button>
+              {Object.entries(STATUS_ICON).map(([k, icon]) => (
+                <button key={k} title={STATUS_LABEL[k]} onClick={() => setStatus(p.id, k)}
+                  className={`text-sm px-0.5 transition-all leading-none ${p.status===k?'opacity-100 scale-110':'opacity-25 hover:opacity-60'}`}>
+                  {icon}
+                </button>
               ))}
             </div>
-            {canEdit && <button className="btn btn-red btn-sm flex-shrink-0 w-7 h-7 p-0 flex items-center justify-center ml-2" onClick={()=>remove(p.id)}>🗑</button>}
+            {canEdit && (
+              <button className="btn btn-sm flex-shrink-0 w-7 h-7 p-0 flex items-center justify-center"
+                onClick={() => openEdit(p)}>✏️</button>
+            )}
+            {canEdit && (
+              <button className="btn btn-red btn-sm flex-shrink-0 w-7 h-7 p-0 flex items-center justify-center"
+                onClick={() => remove(p.id)}>🗑</button>
+            )}
           </div>
         ))}
-        {filtered.length===0 && <div className="card p-8 text-center text-text3">אין אנשים להצגה</div>}
+        {filtered.length === 0 && <div className="card p-8 text-center text-text3">אין אנשים להצגה</div>}
       </div>
 
-      <Modal open={modal} onClose={()=>setModal(false)} title="➕ הוספת איש צוות">
+      {/* מודאל הוספה */}
+      <Modal open={modal} onClose={() => setModal(false)} title="➕ הוספת איש צוות">
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs text-text3 font-bold block mb-1">שם + דרגה</label>
-            <input className="form-input" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} />
+            <input className="form-input" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} />
           </div>
           <div>
             <label className="text-xs text-text3 font-bold block mb-1">תפקיד</label>
-            <select className="form-input" value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
+            <select className="form-input" value={form.role} onChange={e => setForm(f => ({...f, role: e.target.value}))}>
               <option>מכשיר</option><option>ביינש</option><option>עורך סדר</option>
-              <option>קצ"ש</option><option>רב</option><option>קצין בקרה</option><option>סגל</option>
+              <option>קצ"ש</option><option>רב</option><option>קצין שליטה</option><option>סגל</option>
             </select>
           </div>
           <div>
             <label className="text-xs text-text3 font-bold block mb-1">סטטוס זמינות</label>
-            <select className="form-input" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}>
-              <option value="available">✅ זמין</option><option value="zoom">💻 זום</option><option value="away">⬅️ הגב</option>
-              <option value="leave">🏠 שחרור</option><option value="unavailable">❌ אינו זמין</option>
+            <select className="form-input" value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value}))}>
+              <option value="available">✅ זמין</option><option value="zoom">💻 זום</option>
+              <option value="away">⬅️ הגב</option><option value="leave">🏠 שחרור</option>
+              <option value="unavailable">❌ אינו זמין</option>
             </select>
           </div>
-
-          {['רב', 'קצין בקרה'].includes(form.role) && (
+          {PRIVILEGED_ROLES.includes(form.role) && (
             <div className="col-span-2 p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
               <label className="text-xs text-red-400 font-bold block mb-1">קוד אבטחה אישי (4 ספרות) - חובה לסגל פיקוד</label>
-              <input type="text" maxLength="4" pattern="[0-9]*" className="form-input bg-bg2 border-red-500/50 tracking-widest text-center font-mono" value={form.pin_code} onChange={e=>setForm(f=>({...f,pin_code:e.target.value}))} placeholder="לדוגמה: 1234" />
+              <input type="text" maxLength="4" pattern="[0-9]*"
+                className="form-input bg-bg2 border-red-500/50 tracking-widest text-center font-mono"
+                value={form.pin_code} onChange={e => setForm(f => ({...f, pin_code: e.target.value}))} placeholder="לדוגמה: 1234" />
             </div>
           )}
-
           {canManageMultiple && (
             <div className="col-span-2">
               <label className="text-xs text-text3 font-bold block mb-1">⚠ יחידה יעד *</label>
-              <select className="form-input" value={form.targetUnit} onChange={e=>setForm(f=>({...f,targetUnit:e.target.value, post_id:''}))}>
+              <select className="form-input" value={form.targetUnit} onChange={e => setForm(f => ({...f, targetUnit: e.target.value, post_id:''}))}>
                 <option value="">בחר יחידה...</option>
-                {leafUnits.map(u=><option key={u.id} value={u.id}>{u.icon} {u.name}</option>)}
+                {leafUnits.map(u => <option key={u.id} value={u.id}>{u.icon} {u.name}</option>)}
               </select>
             </div>
           )}
           <div className="col-span-2">
             <label className="text-xs text-text3 font-bold block mb-1">שיוך למקום (אופציונלי)</label>
-            <select className="form-input border-gold/50 text-gold" value={form.post_id} onChange={e=>setForm(f=>({...f,post_id:e.target.value}))}>
+            <select className="form-input border-gold/50 text-gold" value={form.post_id} onChange={e => setForm(f => ({...f, post_id: e.target.value}))}>
               <option value="">-- ללא שיוך --</option>
-              {posts.filter(p => !canManageMultiple || p.unit_id === (form.targetUnit || currentUnit.id)).map(p => <option key={p.id} value={p.id}>{p.name} ({p.type || 'כללי'})</option>)}
+              {posts.filter(p => !canManageMultiple || p.unit_id === (form.targetUnit || currentUnit.id)).map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.type || 'כללי'})</option>
+              ))}
             </select>
           </div>
         </div>
-        <ModalButtons onClose={()=>setModal(false)} onSave={save} saveLabel="הוסף למערכת"/>
+        <ModalButtons onClose={() => setModal(false)} onSave={save} saveLabel="הוסף למערכת"/>
+      </Modal>
+
+      {/* מודאל עריכת שם */}
+      <Modal open={!!editModal} onClose={() => setEditModal(null)} title={`✏️ עריכה — ${editModal?.name}`}>
+        {editModal && (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-text3 font-bold block mb-1">שם + דרגה</label>
+              <input className="form-input" value={editForm.name}
+                onChange={e => setEditForm(f => ({...f, name: e.target.value}))} />
+            </div>
+            {PRIVILEGED_ROLES.includes(editModal.role) && (
+              <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+                <label className="text-xs text-red-400 font-bold block mb-1">קוד אבטחה (4 ספרות)</label>
+                <input type="text" maxLength="4" pattern="[0-9]*"
+                  className="form-input bg-bg2 border-red-500/50 tracking-widest text-center font-mono"
+                  value={editForm.pin_code}
+                  onChange={e => setEditForm(f => ({...f, pin_code: e.target.value}))}
+                  placeholder="••••" />
+              </div>
+            )}
+          </div>
+        )}
+        <ModalButtons onClose={() => setEditModal(null)} onSave={saveEdit} saveLabel="💾 שמור"/>
+      </Modal>
+
+      {/* מודאל ביינשים */}
+      <Modal open={!!contactModal} onClose={() => setContactModal(null)} title={`👥 ביינשים — ${contactModal?.name}`}>
+        {contactModal && (
+          <div className="space-y-3">
+            {contacts.length === 0 && (
+              <div className="text-center text-text3 text-sm py-3">אין ביינשים עדיין</div>
+            )}
+            {contacts.map((c, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input className="form-input flex-1 text-sm" placeholder="שם הביינש"
+                  value={c.name} onChange={e => updateContact(i, 'name', e.target.value)} />
+                <input className="form-input w-36 text-sm" placeholder="מספר טלפון" dir="ltr"
+                  value={c.phone} onChange={e => updateContact(i, 'phone', e.target.value)} />
+                <button onClick={() => removeContact(i)} className="text-red-400/60 hover:text-red-400 text-xl flex-shrink-0 leading-none">✕</button>
+              </div>
+            ))}
+            <button onClick={addContact}
+              className="w-full btn btn-sm border-dashed border-border2 text-text3 hover:text-text1 hover:border-gold/50">
+              + הוסף ביינש
+            </button>
+          </div>
+        )}
+        <ModalButtons onClose={() => setContactModal(null)} onSave={saveContacts} saveLabel="💾 שמור"/>
       </Modal>
     </div>
   )
@@ -198,8 +310,8 @@ function SederTab() {
     setAssignments(data || [])
   }
 
-  function openAdd()  { setEditItem(null); setForm({base_name:'',rabbi_name:'',participants:'',kit_delivered:false,notes:''}); setModal(true) }
-  function openEdit(a){ setEditItem(a);    setForm({base_name:a.base_name,rabbi_name:a.rabbi_name||'',participants:a.participants||'',kit_delivered:a.kit_delivered||false,notes:a.notes||''}); setModal(true) }
+  function openAdd()   { setEditItem(null); setForm({base_name:'',rabbi_name:'',participants:'',kit_delivered:false,notes:''}); setModal(true) }
+  function openEdit(a) { setEditItem(a); setForm({base_name:a.base_name,rabbi_name:a.rabbi_name||'',participants:a.participants||'',kit_delivered:a.kit_delivered||false,notes:a.notes||''}); setModal(true) }
 
   async function save() {
     if (!form.base_name) return
@@ -232,12 +344,10 @@ function SederTab() {
       {assignments.length>0 && (
         <div className="card p-4">
           <div className="flex justify-between text-xs text-text3 mb-2">
-            <span>ניפוק ערכות ליל הסדר</span>
-            <span className="font-bold">{delivered}/{assignments.length}</span>
+            <span>ניפוק ערכות ליל הסדר</span><span className="font-bold">{delivered}/{assignments.length}</span>
           </div>
           <div className="h-3 bg-bg3 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${pct===100?'bg-green-500':pct>=50?'bg-orange-500':'bg-red-500'}`}
-              style={{width:`${pct}%`}}/>
+            <div className={`h-full rounded-full ${pct===100?'bg-green-500':pct>=50?'bg-orange-500':'bg-red-500'}`} style={{width:`${pct}%`}}/>
           </div>
         </div>
       )}
@@ -279,8 +389,7 @@ function SederTab() {
               <input type="number" className="form-input" value={form.participants} onChange={e=>setForm(f=>({...f,participants:e.target.value}))}/></div>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.kit_delivered}
-              onChange={e=>setForm(f=>({...f,kit_delivered:e.target.checked}))} className="w-4 h-4 accent-gold"/>
+            <input type="checkbox" checked={form.kit_delivered} onChange={e=>setForm(f=>({...f,kit_delivered:e.target.checked}))} className="w-4 h-4 accent-gold"/>
             <span className="text-sm">ערכת ליל הסדר נופקה</span>
           </label>
           <div><label className="text-xs text-text3 font-bold block mb-1">הערות</label>
@@ -339,8 +448,7 @@ function ImportTab() {
         if (!name) { skipped++; continue }
         const role = roleIdx>=0 ? row[roleIdx]?.toString().trim() : 'סגל'
         const { error } = await supabase.from('personnel').insert({
-          unit_id: currentUnit.id, name, role: role||'סגל',
-          status: 'available', training_status: 'none'
+          unit_id: currentUnit.id, name, role: role||'סגל', status: 'available', training_status: 'none'
         })
         if (error) skipped++; else inserted++
       }
@@ -364,14 +472,12 @@ function ImportTab() {
         <p className="text-sm text-text3">ייבוא מקובץ Excel</p>
         <button onClick={downloadTemplate} className="btn btn-sm">📥 הורד תבנית</button>
       </div>
-      <div onClick={()=>fileRef.current?.click()}
-        onDragOver={e=>e.preventDefault()}
+      <div onClick={()=>fileRef.current?.click()} onDragOver={e=>e.preventDefault()}
         onDrop={e=>{e.preventDefault();handleFile(e.dataTransfer.files[0])}}
         className="border-2 border-dashed border-border2 rounded-2xl p-10 text-center cursor-pointer hover:border-gold/50 transition-all">
         <div className="text-4xl mb-3">📊</div>
         <div className="font-bold text-text2">{file?file.name:'גרור קובץ xlsx/csv לכאן'}</div>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-          onChange={e=>handleFile(e.target.files[0])}/>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>handleFile(e.target.files[0])}/>
       </div>
       {preview.length>0 && (
         <div className="card overflow-hidden">
