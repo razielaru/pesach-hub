@@ -1,5 +1,3 @@
-import { HALACHA_DB } from './knowledge.js';
-
 export const maxDuration = 300; 
 export const config = { runtime: 'edge' };
 
@@ -12,38 +10,30 @@ export default async function handler(req) {
       { status: 500, headers: { 'Content-Type': 'application/json' } });
 
   try {
-    const { messages, systemPrompt } = await req.json();
+    // במקום לשלוח שאלה ל-AI, אנחנו מושכים את רשימת המודלים מהחשבון שלך
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`);
+    const data = await res.json();
 
-    const system = `${systemPrompt}\n\n=== ספר ההכשרות הצבאי ===\n${HALACHA_DB}\n=== סוף הספר ===\n\nהנחיות: ענה בעברית קצרה וברורה. התבסס אך ורק על הספר המצורף. אם צריך אישור חריג, ציין זאת. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
-
-    const targetModel = "gemini-2.0-flash";
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents: messages.map(m => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }]
-          })),
-          generationConfig: { temperature: 0.1, maxOutputTokens: 3000 }
-        })
-      }
-    );
-
-    if (!res.ok) {
-      const err = await res.text();
-      return new Response(JSON.stringify({ error: err }), { status: 500 });
+    let responseText = "לא הצלחתי למשוך מודלים";
+    
+    if (data.models) {
+      // מסננים רק מודלים שמסוגלים לייצר טקסט, ושולפים את השם שלהם
+      const modelNames = data.models
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .map(m => `✅ ${m.name.replace('models/', '')}`)
+        .join('\n');
+        
+      responseText = `המודלים הפתוחים עבורך כרגע ב-API הם:\n\n${modelNames}\n\n* תעתיק לפה את השם של המודל שהכי נראה לך (למשל gemini-1.5-pro או משהו דומה שיש לך ברשימה) כדי שנחזיר אותו לקוד האמיתי.`;
+    } else {
+      responseText = "התקבלה שגיאה מגוגל:\n" + JSON.stringify(data);
     }
 
-    // הפתרון לשגיאת ה-Locked Stream! שימוש ב-TransformStream תקני
-    const { readable, writable } = new TransformStream();
-    res.body.pipeTo(writable);
+    // אורזים את התשובה בפורמט סטרימינג שהצ'אט ב-QnAPage יודע לקרוא
+    const payload = JSON.stringify({
+      candidates: [{ content: { parts: [{ text: responseText }] } }]
+    });
 
-    return new Response(readable, {
+    return new Response(`data: ${payload}\n\n`, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
