@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore'
 import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 
-export function CleaningPage() {
+export default function CleaningPage() {
   const { currentUnit, showToast } = useStore()
   const [areas, setAreas]   = useState([])  // cleaning_areas
   const [posts, setPosts]   = useState([])  // unit_posts
@@ -87,7 +87,7 @@ export function CleaningPage() {
         {posts.length === 0 && <p className="text-center text-text3 py-10">אין מקומות מוגדרים. הגדר אותם קודם בטאב "הכשרות".</p>}
         {posts.map(post => {
           const postAreas = areas.filter(a => a.post_id === post.id)
-          if (postAreas.length === 0) return null // אל תציג מקומות שאין להם יעדי ניקיון
+          if (postAreas.length === 0) return null
 
           return (
             <div key={post.id} className="card overflow-hidden border border-border1">
@@ -131,4 +131,3 @@ export function CleaningPage() {
     </div>
   )
 }
-export default CleaningPage
