@@ -14,7 +14,6 @@ import CommandPage from './CommandPage'
 import UnitManagePage from './UnitManagePage'
 import ChatPage from './ChatPage'
 
-// הסדר החדש שביקשת למובייל
 const BOTTOM_NAV = [
   { id: 'dashboard', label: 'ראשי',       icon: '🏠' },
   { id: 'personnel', label: 'כוח אדם',    icon: '👥' },
@@ -34,8 +33,8 @@ const FULL_NAV = [
   { id: 'qna',        label: '⚖️ שו"ת הלכתי',        admin: false, seniorOnly: false },
   { id: 'timeline',   label: '📅 לוח שנה',          admin: false, seniorOnly: false },
   { id: 'chat',       label: "💬 צ'אט יחידות",      admin: false, seniorOnly: false },
-  { id: 'command',    label: '⭐ פיקוד על',         admin: false, seniorOnly: true  }, // אוגדה + פיקוד
-  { id: 'unitmanage', label: '⚙ ניהול',             admin: true,  seniorOnly: false }, // פיקוד בלבד
+  { id: 'command',    label: '⭐ פיקוד על',         admin: false, seniorOnly: true  }, 
+  { id: 'unitmanage', label: '⚙ ניהול',             admin: true,  seniorOnly: false }, 
 ]
 
 export default function AppShell() {
@@ -89,11 +88,10 @@ export default function AppShell() {
   const canSeeAdmin = isAdmin
   const canSeeSenior = isAdmin || isSenior
 
-  // סינון ניווט לפי הרשאות
   const visibleNav = FULL_NAV.filter(n => {
-    if (n.admin) return canSeeAdmin       // ניהול — פיקוד בלבד
-    if (n.seniorOnly) return canSeeSenior // פיקוד על — אוגדה + פיקוד
-    return true                           // שאר — כולם
+    if (n.admin) return canSeeAdmin       
+    if (n.seniorOnly) return canSeeSenior 
+    return true                           
   })
 
   const visibleAlerts = alerts.filter(a => !alertDismissed.has(a.id))
@@ -109,15 +107,27 @@ export default function AppShell() {
   function navTo(id) { setPage(id); setMenuOpen(false) }
 
   return (
-    <div className="min-h-screen flex flex-col bg-bg0">
+    <div className="min-h-screen flex flex-col bg-bg0" dir="rtl">
 
       {/* Top bar */}
-      <header className="h-14 bg-bg1 border-b border-border1 flex items-center px-4 gap-3 sticky top-0 z-50">
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-lg">✡</span>
-          <span className="bg-yellow-900/30 border border-yellow-600/40 text-gold text-xs font-black px-3 py-1 rounded-full max-w-[130px] truncate">
-            {currentUnit?.name}
-          </span>
+      <header className="h-14 bg-bg1 border-b border-border1 flex items-center justify-between px-4 sticky top-0 z-50">
+        
+        {/* צד ימין במובייל: המבורגר + לוגו */}
+        <div className="flex items-center gap-3">
+          {/* Hamburger */}
+          <button onClick={() => setMenuOpen(!menuOpen)}
+            className="lg:hidden w-8 h-8 rounded-lg bg-bg3 border border-border1 flex flex-col items-center justify-center gap-1">
+            <span className={`w-4 h-0.5 bg-text2 transition-all ${menuOpen ? 'rotate-45 translate-y-1.5' : ''}`}/>
+            <span className={`w-4 h-0.5 bg-text2 transition-all ${menuOpen ? 'opacity-0' : ''}`}/>
+            <span className={`w-4 h-0.5 bg-text2 transition-all ${menuOpen ? '-rotate-45 -translate-y-1.5' : ''}`}/>
+          </button>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-lg">✡</span>
+            <span className="bg-yellow-900/30 border border-yellow-600/40 text-gold text-xs font-black px-3 py-1 rounded-full max-w-[130px] truncate">
+              {currentUnit?.name}
+            </span>
+          </div>
         </div>
 
         {/* Desktop nav */}
@@ -131,8 +141,7 @@ export default function AppShell() {
           ))}
         </nav>
 
-        <div className="flex-1 lg:hidden" />
-
+        {/* צד שמאל: שעון וכו' */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="hidden md:flex items-center gap-1.5 bg-bg3 border border-border2 text-gold2 text-xs font-bold px-3 py-1 rounded-full">
             ⏳ {days} ימים
@@ -147,14 +156,6 @@ export default function AppShell() {
               📢
             </button>
           )}
-
-          {/* Hamburger */}
-          <button onClick={() => setMenuOpen(!menuOpen)}
-            className="lg:hidden w-8 h-8 rounded-lg bg-bg3 border border-border1 flex flex-col items-center justify-center gap-1">
-            <span className={`w-4 h-0.5 bg-text2 transition-all ${menuOpen ? 'rotate-45 translate-y-1.5' : ''}`}/>
-            <span className={`w-4 h-0.5 bg-text2 transition-all ${menuOpen ? 'opacity-0' : ''}`}/>
-            <span className={`w-4 h-0.5 bg-text2 transition-all ${menuOpen ? '-rotate-45 -translate-y-1.5' : ''}`}/>
-          </button>
 
           <button onClick={logout}
             className="hidden sm:block text-xs text-text3 hover:text-text1 border border-border1 hover:border-border2 px-3 py-1 rounded-lg transition-all">
@@ -193,11 +194,11 @@ export default function AppShell() {
         </div>
       ))}
 
-      {/* Mobile slide-in menu */}
+      {/* Mobile slide-in menu — נפתח מימין! */}
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-40 bg-black/70 lg:hidden" onClick={() => setMenuOpen(false)} />
-          <div className="fixed top-0 left-0 bottom-0 z-50 w-72 bg-bg1 border-l border-border1 flex flex-col lg:hidden shadow-2xl">
+          <div className="fixed top-0 right-0 bottom-0 z-50 w-72 bg-bg1 border-l border-border1 flex flex-col lg:hidden shadow-2xl">
             <div className="h-14 flex items-center px-4 border-b border-border1 gap-3">
               <span className="text-gold font-black">📋 תפריט</span>
               <div className="flex-1" />
@@ -221,18 +222,18 @@ export default function AppShell() {
       )}
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto pb-20 lg:pb-4">
+      <main className="flex-1 overflow-y-auto pb-24 lg:pb-4">
         <div className="max-w-5xl mx-auto px-4 py-5">
           {pages[activePage] || <Dashboard />}
         </div>
       </main>
 
-      {/* Bottom nav - מותאם לישראל וקריא יותר */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-bg1 border-t border-border1 z-40 pb-safe shadow-[0_-10px_20px_rgba(0,0,0,0.3)]" dir="rtl">
-        <div className="flex h-16 px-1">
+      {/* Bottom nav — מואר, בהיר ומסודר מימין לשמאל */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-bg2/95 backdrop-blur-md border-t border-border1 z-40 pb-safe shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
+        <div className="flex justify-around items-center h-16 px-1">
           {BOTTOM_NAV.map(n => (
             <button key={n.id} onClick={() => navTo(n.id)}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all rounded-xl
+              className={`flex-1 flex flex-col items-center justify-center h-full gap-1 transition-all rounded-xl
                 ${activePage === n.id ? 'text-gold' : 'text-gray-300 hover:text-white hover:bg-bg3/50'}`}>
               <span className={`text-2xl transition-transform ${activePage === n.id ? 'scale-110 drop-shadow-[0_0_8px_rgba(245,200,66,0.6)]' : 'opacity-80'}`}>
                 {n.icon}
