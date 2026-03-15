@@ -12,7 +12,6 @@ export default function TrainingPage() {
   const [posts,  setPosts]  = useState([])
   const [expanded, setExpanded] = useState({})
   
-  // ניהול המודל (הוספה / עריכה)
   const [postModal, setPostModal] = useState(false)
   const [editPostId, setEditPostId] = useState(null)
   const [postForm, setPostForm] = useState({ name: '', type: 'מפח״ט', parent_id: '', unitId: '' })
@@ -59,14 +58,12 @@ export default function TrainingPage() {
     load()
   }
 
-  // ── פתיחת מודל להוספה ──
   function openAddPost() {
     setEditPostId(null)
     setPostForm({ name: '', type: 'מפח״ט', parent_id: '', unitId: currentUnit.id })
     setPostModal(true)
   }
 
-  // ── פתיחת מודל לעריכה (גלגל שיניים) ──
   function openEditPost(post) {
     setEditPostId(post.id)
     setPostForm({ 
@@ -78,7 +75,6 @@ export default function TrainingPage() {
     setPostModal(true)
   }
 
-  // ── שמירה (הוספה או עדכון) ──
   async function savePost() {
     if (!postForm.name) return
     const targetUnit = postForm.unitId || currentUnit.id
@@ -91,12 +87,10 @@ export default function TrainingPage() {
     }
 
     if (editPostId) {
-      // מצב עריכה
       const { error } = await supabase.from('unit_posts').update(payload).eq('id', editPostId)
       if (error) showToast('שגיאה בעדכון המקום', 'red')
       else showToast(`המקום עודכן בהצלחה ✅`, 'green')
     } else {
-      // מצב יצירה
       payload.status = 'none'
       const { error } = await supabase.from('unit_posts').insert(payload)
       if (error) showToast('שגיאה ביצירת המקום', 'red')
@@ -136,7 +130,10 @@ export default function TrainingPage() {
 
   function renderPost(post, isChild = false) {
     const children = posts.filter(p => p.parent_id === post.id)
-    const isExpanded = expanded[post.id] !== false
+    
+    // ── פה שינינו את ברירת המחדל לסגור! ──
+    const isExpanded = expanded[post.id] === true 
+    
     const assignedPeople = people.filter(p => p.post_id === post.id)
 
     return (
@@ -150,8 +147,6 @@ export default function TrainingPage() {
             )}
             <span className="font-black text-lg">{post.name}</span>
             <span className="badge badge-dim text-xs">{post.type}</span>
-            
-            {/* כפתור העריכה (גלגל שיניים) - חדש! */}
             <button onClick={() => openEditPost(post)} className="text-text3 hover:text-gold transition-colors p-1" title="ערוך מקום ושיוך">
               ⚙️
             </button>
@@ -223,7 +218,6 @@ export default function TrainingPage() {
         {rootPosts.map(post => renderPost(post))}
       </div>
 
-      {/* חלון ההוספה/עריכה המאוחד */}
       <Modal open={postModal} onClose={() => setPostModal(false)} title={editPostId ? '⚙️ עריכת מקום ושיוך' : '➕ הוספת מקום חדש'}>
         <div className="space-y-4">
           <div className="border border-border1 rounded-xl p-4 bg-bg3/50 space-y-3">
@@ -242,7 +236,7 @@ export default function TrainingPage() {
                 <select className="form-input text-gold border-gold/50" value={postForm.parent_id} onChange={e => setPostForm(f => ({...f, parent_id: e.target.value}))}>
                   <option value="">-- מקום ראשי (עצמאי) --</option>
                   {posts
-                    .filter(p => p.id !== editPostId) // לא יכול להיות אבא של עצמו
+                    .filter(p => p.id !== editPostId)
                     .map(p => <option key={p.id} value={p.id}>{p.name} ({p.type})</option>)}
                 </select>
               </div>
