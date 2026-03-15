@@ -1,282 +1,281 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
+import { UNITS, getLeafUnits } from '../lib/units'
+import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
-import { getLeafUnits, UNITS } from '../lib/units'
+import BriefingMode, { useSmartAlerts } from './BriefingMode'
+import MapView from './MapView'
+import DutyOfficerAI from './DutyOfficerAI'
 import PushSetup from '../components/PushSetup'
 
-const LOGO_CACHE = {}
-
-export default function Dashboard() {
-  const { currentUnit, activePage, setPage, isSenior, isAdmin } = useStore()
-  
-  const [stats, setStats] = useState({ trained:0, active:0, available:0, missingEquip:0, equipPct:0, cleanPct:0, total:0 })
-  const [tasks, setTasks] = useState([])
-  const [incidents, setIncidents] = useState([])
+export default function CommandPage() {
+  const { currentUnit, activePage, showToast } = useStore()
+  const [unitStats, setUnitStats] = useState({})
   const [loading, setLoading] = useState(true)
-  const [unitLogo, setUnitLogo] = useState(LOGO_CACHE[currentUnit?.id] || null)
-  const [readiness, setReadiness] = useState(0)
-  const [silentUnits, setSilentUnits] = useState([])
-  const [lastActivity, setLastActivity] = useState({})
-  const days = Math.max(0, Math.ceil((new Date('2026-04-02') - new Date()) / 86400000))
+  const [viewMode, setViewMode] = useState('table')
+  const [briefing, setBriefing] = useState(false)
+  const [taskModal, setTaskModal] = useState(false)
+  const [dispatchModal, setDispatchModal] = useState(false)
+  const [taskForm, setTaskForm] = useState({ title:'', desc:'', priority:'high', date:'', target:'' })
+  const [dispForm, setDispForm] = useState({ unit:'', item:'', qty:1, note:'' })
+  const [dispLog, setDispLog] = useState([])
+  
+  const [alertsAcknowledged, setAlertsAcknowledged] = useState(false)
+
+  const nonAdminUnits = getLeafUnits(currentUnit?.id || '')
 
   useEffect(() => {
-    if (!currentUnit || activePage !== 'dashboard') return
-    loadStats()
-    if (!LOGO_CACHE[currentUnit.id]) loadLogo()
+    if (!currentUnit || activePage !== 'command') return
+    loadAll()
     
-    const ch = supabase.channel('dashboard_rt_' + currentUnit.id)
-      .on('postgres_changes', { event:'*', schema:'public', table:'incidents' },   () => loadStats())
-      .on('postgres_changes', { event:'*', schema:'public', table:'personnel' },   () => loadStats())
-      .on('postgres_changes', { event:'*', schema:'public', table:'equipment' },   () => loadStats())
-      .on('postgres_changes', { event:'*', schema:'public', table:'cleaning_areas' }, () => loadStats())
+    const ch = supabase.channel('command_rt_' + currentUnit.id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'personnel' },      () => loadAll())
+      .on('postgres_changes', { event:'*', schema:'public', table:'equipment' },      () => loadAll())
+      .on('postgres_changes', { event:'*', schema:'public', table:'cleaning_areas' }, () => loadAll())
+      .on('postgres_changes', { event:'*', schema:'public', table:'incidents' },      () => loadAll())
+      .on('postgres_changes', { event:'*', schema:'public', table:'dispatch_log' },   () => loadAll())
       .subscribe()
       
     return () => supabase.removeChannel(ch)
   }, [currentUnit, activePage])
 
-  async function loadStats() {
-    try {
-      const uid = currentUnit.id
-      const subs = getLeafUnits(uid) || []
-      const ids = Array.from(new Set([uid, ...subs.map(u => u.id)]))
-      const inF = q => ids.length === 1 ? q.eq('unit_id', ids[0]) : q.in('unit_id', ids)
+  async function loadAll() {
+    const unitIds = nonAdminUnits.map(u => u.id)
+    if (unitIds.length === 0) { setLoading(false); return }
 
-      const [pers, equip, areas, openTasks, openInc, postsRes, lastPers, lastInc, lastClean] = await Promise.all([
-        inF(supabase.from('personnel').select('*')),
-        inF(supabase.from('equipment').select('*')),
-        inF(supabase.from('cleaning_areas').select('*')),
-        inF(supabase.from('tasks').select('*').neq('status','done').order('created_at',{ascending:false}).limit(4)),
-        inF(supabase.from('incidents').select('*').eq('status','open').order('created_at',{ascending:false}).limit(3)),
-        (ids.length === 1
-          ? supabase.from('unit_posts').select('*').eq('unit_id', ids[0])
-          : supabase.from('unit_posts').select('*').in('unit_id', ids)
-        ),
-        inF(supabase.from('personnel').select('*').order('created_at',{ascending:false}).limit(200)),
-        inF(supabase.from('incidents').select('*').order('created_at',{ascending:false}).limit(100)),
-        inF(supabase.from('cleaning_areas').select('*').order('updated_at',{ascending:false}).limit(100)),
-      ])
+    const [persRes, equipRes, areasRes, incRes, dlRes] = await Promise.all([
+      supabase.from('personnel').select('*').in('unit_id', unitIds),
+      supabase.from('equipment').select('*').in('unit_id', unitIds),
+      supabase.from('cleaning_areas').select('*').in('unit_id', unitIds),
+      supabase.from('incidents').select('*').eq('status','open').in('unit_id', unitIds),
+      supabase.from('dispatch_log').select('*').order('created_at',{ascending:false}).limit(20),
+    ])
 
-      const p = pers.data||[], e = equip.data||[], a = areas.data||[]
+    const pers  = persRes.data  || []
+    const equip = equipRes.data || []
+    const areas = areasRes.data || []
+    const incs  = incRes.data   || []
+
+    const stats = {}
+    nonAdminUnits.forEach(u => {
+      const p = pers.filter(x => x.unit_id === u.id)
+      const e = equip.filter(x => x.unit_id === u.id)
+      const a = areas.filter(x => x.unit_id === u.id)
+      
+      const trainedPct = p.length ? Math.round(p.filter(x=>x.training_status==='done').length/p.length*100) : 0
+      const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
       
       const missingEquip = e.filter(x=>x.have<x.need).length
       const totalNeed = e.reduce((sum, x) => sum + (x.need || 0), 0)
       const totalHave = e.reduce((sum, x) => sum + Math.min(x.have || 0, x.need || 0), 0)
       const equipPct = totalNeed > 0 ? Math.round((totalHave / totalNeed) * 100) : 0
 
-      const trained = p.filter(x=>x.training_status==='done').length
-      const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
-      const openIncCount = openInc.data?.length || 0
-
-      setStats({
-        trained, active: p.filter(x=>x.training_status==='active').length,
-        available: p.filter(x=>x.status==='available').length,
-        missingEquip, equipPct, cleanPct, total: p.length,
-      })
-      setTasks(openTasks.data||[])
-      setIncidents(openInc.data||[])
-
-      const hasData = p.length > 0 || a.length > 0 || totalNeed > 0
-      if (!hasData) { setReadiness(-1); setLoading(false); return }
-
-      const trainedPct = p.length ? Math.round(trained/p.length*100) : 0
-
-      let total = 0, weight = 0
-      if (p.length > 0)  { total += trainedPct * 0.40; weight += 0.40 }
-      if (a.length > 0)  { total += cleanPct   * 0.30; weight += 0.30 }
-      if (totalNeed > 0) { total += equipPct   * 0.30; weight += 0.30 }
+      const openInc = incs.filter(x => x.unit_id === u.id).length
       
-      let r = weight > 0 ? Math.round(total / weight) : 0
-      
-      // קנס על חריגים
-      r = Math.max(0, r - (openIncCount * 10))
+      const health = p.length === 0 ? 'gray'
+        : openInc>0 || trainedPct<50 || (totalNeed>0 && equipPct<40) ? 'red' 
+        : trainedPct<80 || (totalNeed>0 && equipPct<80) ? 'orange'
+        : 'green'
+        
+      stats[u.id] = { trainedPct, equipPct, missingEquip, cleanPct, openInc, health, personnel: p.length }
+    })
+    setUnitStats(stats)
+    setDispLog(dlRes.data || [])
+    setLoading(false)
+  }
 
-      // 🛑 פקטור חוסם (Showstopper) 🛑
-      if ((totalNeed > 0 && equipPct < 40) || (p.length > 0 && trainedPct < 50)) {
-        r = Math.min(r, 50)
+  async function sendTask() {
+    if (!taskForm.title) return
+    const senderName = currentUnit?.name || 'פיקוד'
+    const targets = taskForm.target ? [taskForm.target] : nonAdminUnits.map(u=>u.id)
+    const rows = targets.map(uid => ({
+      unit_id: uid, title: taskForm.title,
+      description: taskForm.desc, priority: taskForm.priority,
+      due_date: taskForm.date || null, status: 'todo', assigned_by: senderName
+    }))
+    await supabase.from('tasks').insert(rows)
+    const targetName = taskForm.target ? UNITS.find(u=>u.id===taskForm.target)?.name : 'כל היחידות תחתי'
+    showToast(`משימה נשלחה ל${targetName} ✅`, 'green')
+    setTaskModal(false)
+    setTaskForm({ title:'', desc:'', priority:'high', date:'', target:'' })
+  }
+
+  async function saveDispatch() {
+    if (!dispForm.unit || !dispForm.item) return
+    const { error } = await supabase.from('dispatch_log').insert({
+      unit_id: dispForm.unit, item_name: dispForm.item,
+      quantity: dispForm.qty, notes: dispForm.note,
+      dispatched_by: currentUnit?.name
+    })
+    if (!error) {
+      const { data: existing } = await supabase.from('equipment')
+        .select('*').eq('unit_id', dispForm.unit).eq('name', dispForm.item).maybeSingle()
+      if (existing) {
+        await supabase.from('equipment').update({ have: existing.have + dispForm.qty }).eq('id', existing.id)
+      } else {
+        await supabase.from('equipment').insert({ unit_id: dispForm.unit, name: dispForm.item,
+          category: 'ניפוק', have: dispForm.qty, need: dispForm.qty })
       }
-      
-      setReadiness(r)
-
-      if (subs.length > 0) {
-        const cutoff = new Date(Date.now() - 24*60*60*1000).toISOString()
-        const activity = {}
-        for (const row of [...(lastPers.data||[]), ...(lastInc.data||[])]) {
-          const ts = row.created_at
-          if (!activity[row.unit_id] || ts > activity[row.unit_id]) activity[row.unit_id] = ts
-        }
-        for (const row of (lastClean.data||[])) {
-          const ts = row.updated_at
-          if (!activity[row.unit_id] || ts > activity[row.unit_id]) activity[row.unit_id] = ts
-        }
-        setLastActivity(activity)
-
-        const leafSubs = subs.filter(u => !u.is_senior && !u.is_admin)
-        const silent = leafSubs.filter(u => !activity[u.id] || activity[u.id] < cutoff)
-        setSilentUnits(silent)
-      }
-
-      setLoading(false)
-    } catch(err) {
-      console.error('loadStats error:', err)
-      setLoading(false)
+      showToast('ניפוק נרשם ✅', 'green')
+      setDispatchModal(false)
+      loadAll()
     }
   }
 
-  async function loadLogo() {
-    const { data } = await supabase.from('units').select('logo_url').eq('id', currentUnit.id).single()
-    if (data?.logo_url) { LOGO_CACHE[currentUnit.id] = data.logo_url; setUnitLogo(data.logo_url) }
+  const totals = Object.values(unitStats)
+  const avgTrained = totals.length ? Math.round(totals.reduce((a,s)=>a+s.trainedPct,0)/totals.length) : 0
+  const avgClean = totals.length ? Math.round(totals.reduce((a,s)=>a+s.cleanPct,0)/totals.length) : 0
+  const avgEquip = totals.length ? Math.round(totals.reduce((a,s)=>a+(s.equipPct||0),0)/totals.length) : 0
+  
+  const totalMissing = totals.reduce((a,s)=>a+s.missingEquip,0)
+  const totalInc = totals.reduce((a,s)=>a+s.openInc,0)
+  
+  let totalScore = 0, weight = 0
+  if (avgTrained > 0) { totalScore += avgTrained * 0.4; weight += 0.4 }
+  if (avgClean > 0)   { totalScore += avgClean * 0.3; weight += 0.3 }
+  if (avgEquip > 0)   { totalScore += avgEquip * 0.3; weight += 0.3 }
+  
+  let globalReadiness = weight > 0 ? Math.round(totalScore / weight) : 0
+  globalReadiness = Math.max(0, globalReadiness - (totalInc * 10))
+
+  if ((avgEquip > 0 && avgEquip < 40) || (avgTrained > 0 && avgTrained < 50)) {
+    globalReadiness = Math.min(globalReadiness, 50)
   }
 
-  const priColor = { urgent:'badge badge-red', high:'badge badge-orange', normal:'badge badge-blue' }
-  const priLabel = { urgent:'דחוף', high:'גבוה', normal:'בינוני' }
-  const noData = readiness === -1
-  const readinessColor = noData ? 'text-text3' : readiness >= 80 ? 'text-green-400' : readiness >= 60 ? 'text-orange-400' : 'text-red-400'
-  const readinessBg    = noData ? 'bg-border2'  : readiness >= 80 ? 'bg-green-500'  : readiness >= 60 ? 'bg-orange-500'  : 'bg-red-500'
-  const readinessLabel = noData ? 'טרם הוזנו נתונים' : readiness >= 80 ? 'מוכן לפסח ✅' : readiness >= 60 ? 'בתהליך 🔄' : 'דורש טיפול ⚠️'
-  const readinessDisplay = noData ? '—' : readiness + '%'
-
-  function timeSince(ts) {
-    const m = Math.floor((Date.now() - new Date(ts)) / 60000)
-    if (m < 60) return `לפני ${m} דק'`
-    const h = Math.floor(m/60)
-    if (h < 24) return `לפני ${h} שעות`
-    return `לפני ${Math.floor(h/24)} ימים`
+  async function exportPDF() {
+    window.print()
   }
 
-  if (loading) return (
-    <div className="space-y-5 animate-pulse">
-      <div className="card p-6 h-32 bg-bg2"/>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {[...Array(5)].map((_,i)=><div key={i} className="card h-20 bg-bg2"/>)}
-      </div>
-    </div>
-  )
+  const daysLeft = Math.max(0, Math.ceil((new Date('2026-04-02') - new Date()) / 86400000))
+  const smartAlerts = useSmartAlerts(unitStats, daysLeft)
+  const criticalAlerts = smartAlerts.filter(a => a.level === 'critical')
+
+  const healthColor = { green: 'border-green-500 bg-green-900/10', orange: 'border-orange-500 bg-orange-900/10', red: 'border-red-500 bg-red-900/10 animate-pulse', gray: 'border-border2 bg-bg3' }
+  const healthDot = { green: 'bg-green-500', orange: 'bg-orange-500', red: 'bg-red-500', gray: 'bg-border2' }
+  const healthLabel = { green: 'תקין', orange: 'דורש תשומת לב', red: '⚠ קריטי', gray: 'אין נתונים' }
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-text3">טוען נתונים...</div>
+
+  // חלון הפריצה: מוצג כבאנר "פיקוד העורף" עליון ולא כהחשכת מסך
+  const showCriticalPopup = criticalAlerts.length > 0 && !alertsAcknowledged
 
   return (
     <div className="space-y-5">
-      
-      {/* ── כפתור ההפעלה של ההתראות (Web Push) ── */}
       <PushSetup />
       
-      <div className="card p-5 bg-gradient-to-l from-[#1a2040] to-bg2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-bg3 border border-border2 flex items-center justify-center overflow-hidden flex-shrink-0">
-            {unitLogo ? <img src={unitLogo} alt={currentUnit?.name} className="w-full h-full object-cover"/> : <span className="text-3xl">{currentUnit?.icon || '✡'}</span>}
-          </div>
-          <div>
-            <h2 className="text-2xl font-black mb-1">שלום, {currentUnit?.name} 👋</h2>
-            <p className="text-text2 text-sm">מבצע פסח תשפ"ו — רבנות פיקוד מרכז</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 flex-shrink-0">
-          <div className="text-center">
-            <div className={`text-5xl font-black leading-none ${readinessColor}`}>{readinessDisplay}</div>
-            <div className="text-text3 text-xs mt-1">{readinessLabel}</div>
-            <div className="w-32 pbar h-2.5 rounded-full mt-2"><div className={`pbar-fill ${readinessBg} rounded-full`} style={{width:`${readinessDisplay}`}}/></div>
-          </div>
-          <div className="text-center bg-bg3 rounded-2xl px-6 py-3 border border-border2">
-            <div className="text-5xl font-black text-gold2 leading-none">{days}</div>
-            <div className="text-text3 text-xs mt-1">ימים לפסח</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {[
-          { icon:'🕐', label:'ימים לפסח', val: days, valCls: days<=7?'text-red-400':days<=14?'text-orange-400':'text-gold' },
-          { icon:'📊', label:'מוכנות', val:`${readinessDisplay}`, valCls: readinessColor },
-          { icon:'👥', label:'כוח אדם', val: stats.total, valCls: stats.total>0?'text-blue-400':'text-text3' },
-          { icon:'🎓', label:'הכשרה', val:`${stats.total?Math.round(stats.trained/stats.total*100):0}%`, valCls: stats.total&&stats.trained/stats.total>=0.7?'text-green-400':stats.total?'text-orange-400':'text-text3' },
-          { icon:'📦', label:'ציוד', val: `${stats.equipPct}%`, valCls: stats.equipPct>=80?'text-green-400':stats.equipPct>=50?'text-orange-400':'text-red-400' },
-          { icon:'🆘', label:'חריגים', val: incidents.length, valCls: incidents.length===0?'text-green-400':'text-red-400 animate-pulse' },
-        ].map(item=>(
-          <div key={item.label} className="card p-3 text-center border border-border1">
-            <div className="text-lg mb-0.5">{item.icon}</div>
-            <div className={`text-xl font-black leading-none ${item.valCls}`}>{item.val}</div>
-            <div className="text-text3 text-[10px] mt-1">{item.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {silentUnits.length > 0 && (
-        <div className="bg-orange-900/20 border border-orange-500/40 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xl">⚠️</span><span className="font-bold text-orange-400">{silentUnits.length} יחידות ללא דיווח ב-24 שעות</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {silentUnits.map(u => (
-              <span key={u.id} className="flex items-center gap-1.5 bg-orange-900/20 border border-orange-500/30 rounded-lg px-3 py-1.5 text-xs">
-                <span>{u.icon}</span><span className="font-bold">{u.name}</span>
-                {lastActivity[u.id] ? <span className="text-orange-400/70">{timeSince(lastActivity[u.id])}</span> : <span className="text-orange-400/70">אין נתונים</span>}
-              </span>
-            ))}
+      {/* ── התרעת "פיקוד העורף" מובנית במסך ── */}
+      {showCriticalPopup && (
+        <div className="bg-[#cc0000] rounded-2xl p-5 shadow-[0_4px_20px_rgba(204,0,0,0.4)] border-2 border-red-400 relative overflow-hidden animate-in slide-in-from-top-4">
+          {/* פסי אזהרה ברקע */}
+          <div className="absolute inset-0 opacity-20 pointer-events-none" style={{backgroundImage: 'repeating-linear-gradient(45deg, #000, #000 10px, transparent 10px, transparent 20px)'}}></div>
+          
+          <div className="relative z-10">
+            <h2 className="text-2xl font-black text-white mb-3 flex items-center gap-3">
+              <span className="text-3xl animate-pulse">🚨</span>
+              התרעת מוכנות קריטית!
+            </h2>
+            <div className="bg-black/30 rounded-xl p-4 mb-4 space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
+              {criticalAlerts.map(a => (
+                <div key={a.id} className="text-white flex items-start gap-2">
+                  <span className="text-xl leading-none">{a.icon}</span>
+                  <div>
+                    <div className="font-bold leading-tight">{a.message}</div>
+                    {a.unit && <div className="text-red-200 text-xs mt-1">יחידה: {a.unit}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button 
+              onClick={() => setAlertsAcknowledged(true)} 
+              className="w-full bg-white text-[#cc0000] hover:bg-gray-100 font-black text-lg py-3 rounded-xl shadow-lg transition-all">
+              קראתי ואישרתי
+            </button>
           </div>
         </div>
       )}
 
-      {incidents.length > 0 && (
-        <div className="bg-red-900/20 border border-red-500/40 rounded-xl p-4 flex items-center gap-3 cursor-pointer" onClick={() => setPage('incidents')}>
-          <span className="text-2xl">🆘</span>
-          <div>
-            <div className="font-bold text-red-400">{incidents.length} חריג{incidents.length>1?'ים':''} פתוח{incidents.length>1?'ים':''}</div>
-            <div className="text-xs text-text3">{incidents[0]?.title}</div>
+      {briefing && <BriefingMode unitStats={unitStats} onClose={() => setBriefing(false)} />}
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h2 className="text-xl font-black">⭐ פיקוד על — {currentUnit?.name}</h2>
+          <p className="text-text3 text-xs mt-0.5">{nonAdminUnits.length} יחידות תחת פיקוד</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <div className="flex bg-bg3 border border-border1 rounded-xl overflow-hidden">
+            {[['table','📋 טבלה'],['map','🗺️ מפה'],['compare','📊 השוואה'],['ai','🎖️ קצין תורן']].map(([id,label])=>(
+              <button key={id} onClick={()=>setViewMode(id)} className={`px-3 py-2 text-xs font-bold transition-all ${viewMode===id?'bg-gold text-black':'text-text2 hover:text-text1'}`}>{label}</button>
+            ))}
           </div>
-          <span className="mr-auto text-red-400 text-sm">← לחץ לפרטים</span>
+          <button onClick={() => setBriefing(true)} className="btn text-xs px-3 py-2 bg-purple-900/40 border-purple-500/50 text-purple-300 hover:bg-purple-800/50">🖥 הערכת מצב</button>
+          <button className="btn btn-blue btn-sm" onClick={()=>setTaskModal(true)}>📋 שלח משימה</button>
+          <button className="btn btn-sm" onClick={()=>setDispatchModal(true)}>📦 ניפוק ציוד</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard label="הכשרה ממוצעת" value={`${avgTrained}%`} color={avgTrained>=70?'green':avgTrained>=50?'orange':'red'}/>
+        <KpiCard label="ניקיון ממוצע" value={`${avgClean}%`} color={avgClean>=70?'green':avgClean>=50?'orange':'red'}/>
+        <KpiCard label="ציוד בממוצע" value={`${avgEquip}%`} color={avgEquip>=80?'green':'orange'}/>
+        <KpiCard label="חריגים פתוחים" value={totalInc} color={totalInc===0?'green':'red'}/>
+      </div>
+
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3"><span className="text-sm font-black">📊 פס מצב מבצעי</span><span className="text-text3 text-xs">{new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}</span></div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label:'הכשרה', val:avgTrained, color:avgTrained>=70?'bg-green-500':avgTrained>=50?'bg-orange-500':'bg-red-500', icon:'🎓' },
+            { label:'ניקיון', val:avgClean,  color:avgClean>=70?'bg-green-500':avgClean>=50?'bg-orange-500':'bg-red-500',     icon:'🧹' },
+            { label:'ציוד', val:avgEquip,    color:avgEquip===0?'bg-border2':avgEquip>=80?'bg-green-500':avgEquip>=50?'bg-orange-500':'bg-red-500', icon:'📦', text: avgEquip===0?'אין נתונים':`${avgEquip}%` },
+          ].map(item => (
+            <div key={item.label} className="space-y-1.5">
+              <div className="flex justify-between text-xs"><span className="text-text3">{item.icon} {item.label}</span><span className="font-bold text-text1">{item.text || item.val+'%'}</span></div>
+              <div className="h-2.5 bg-bg4 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all duration-1000 ${item.color}`} style={{width:`${item.val}%`}}/></div>
+            </div>
+          ))}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs"><span className="text-text3">🆘 חריגים</span><span className={`font-bold ${totalInc===0?'text-green-400':'text-red-400'}`}>{totalInc===0?'נקי':`${totalInc} פתוחים`}</span></div>
+            <div className="h-2.5 bg-bg4 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all duration-1000 ${totalInc===0?'bg-green-500':'bg-red-500 animate-pulse'}`} style={{width:'100%'}}/></div>
+          </div>
+        </div>
+        
+        {((avgEquip > 0 && avgEquip < 40) || (avgTrained > 0 && avgTrained < 50)) && (
+          <div className="mt-3 text-red-400 text-xs font-bold">⛔ פקטור חוסם: מדד הפיקוד הוגבל ל-50% עקב פערים קריטיים בהכשרות או בציוד ביחידות.</div>
+        )}
+      </div>
+
+      {viewMode === 'table' && (
+        <div className="card overflow-x-auto">
+          <div className="panel-head"><span className="panel-title">📋 מצב יחידות — {currentUnit?.name}</span></div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border1 text-text3 text-xs">
+                <th className="text-right p-3 font-bold">יחידה</th><th className="text-center p-3 font-bold">הכשרה</th><th className="text-center p-3 font-bold">ניקיון</th><th className="text-center p-3 font-bold">ציוד</th><th className="text-center p-3 font-bold">חריגים</th><th className="text-center p-3 font-bold">מצב</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border1/50">
+              {nonAdminUnits.map(u => {
+                const s = unitStats[u.id] || {}
+                return (
+                  <tr key={u.id} className="hover:bg-bg3/50 transition-colors">
+                    <td className="p-3"><div className="flex items-center gap-2"><span className="text-base">{u.icon}</span><div><div className="font-bold">{u.name}</div><div className="text-text3 text-xs">{s.personnel||0} אנשים</div></div></div></td>
+                    <td className="p-3 text-center"><span className={`font-bold ${s.trainedPct>=70?'text-green-400':s.trainedPct>=40?'text-orange-400':'text-red-400'}`}>{s.trainedPct||0}%</span></td>
+                    <td className="p-3 text-center"><span className={`font-bold ${s.cleanPct>=70?'text-green-400':s.cleanPct>=40?'text-orange-400':'text-red-400'}`}>{s.cleanPct||0}%</span></td>
+                    <td className="p-3 text-center"><span className={`font-bold ${s.equipPct>=80?'text-green-400':s.equipPct>=40?'text-orange-400':'text-red-400'}`}>{s.equipPct||0}%</span></td>
+                    <td className="p-3 text-center"><span className={`font-bold ${s.openInc===0?'text-green-400':'text-red-400'}`}>{s.openInc||0}</span></td>
+                    <td className="p-3 text-center"><span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold border ${healthColor[s.health||'green']}`}><span className={`w-1.5 h-1.5 rounded-full ${healthDot[s.health||'green']}`}/>{healthLabel[s.health||'green']}</span></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard label="כוח אדם" value={stats.total} sub="אנשים" color="blue"/>
-        <KpiCard label="בהכשרה" value={stats.active} color="orange"/>
-        <KpiCard label="כוח אדם זמין" value={stats.available} sub={`מתוך ${stats.total}`} color="blue"/>
-        <KpiCard label="ציוד" value={`${stats.equipPct}%`} sub={`חסר: ${stats.missingEquip}`} color={stats.equipPct>=80?'green':'orange'}/>
-        <KpiCard label="הכשרה" value={`${stats.total?Math.round(stats.trained/stats.total*100):0}%`} sub={`${stats.trained} מתוך ${stats.total}`} color="green"/>
-      </div>
+      {viewMode === 'map' && <MapView unitStats={unitStats} />}
 
-      <div className="grid md:grid-cols-2 gap-5">
-        <div className="card">
-          <div className="panel-head"><span className="panel-title">✅ משימות פתוחות</span><button className="btn btn-sm" onClick={() => setPage('tasks')}>הכל ←</button></div>
-          <div className="divide-y divide-border1/50">
-            {tasks.length===0 && <p className="p-5 text-text3 text-sm">אין משימות פתוחות 🎉</p>}
-            {tasks.map(t=>(
-              <div key={t.id} className="flex items-center gap-3 p-4">
-                <span className={priColor[t.priority]}>{priLabel[t.priority]}</span><span className="font-bold text-sm flex-1">{t.title}</span>
-                {t.assigned_by && <span className="badge badge-purple text-xs">מ{t.assigned_by}</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="card">
-          <div className="panel-head"><span className="panel-title">📊 פירוט מוכנות (פס מבצעי)</span></div>
-          <div className="p-5 space-y-4">
-            {[
-              { label:'הכשרה', val: stats.total ? Math.round(stats.trained/stats.total*100) : 0, color: stats.total ? (stats.trained/stats.total>=0.7?'bg-green-500':'bg-orange-500') : 'bg-border2' },
-              { label:'ניקיון', val: stats.cleanPct, color: stats.cleanPct>=70?'bg-green-500':stats.cleanPct>0?'bg-orange-500':'bg-border2' },
-              { label:'ציוד', val: stats.equipPct, color: stats.equipPct>=80?'bg-green-500':stats.equipPct>0?'bg-orange-500':'bg-border2' },
-            ].map(item=>(
-              <div key={item.label}>
-                <div className="flex justify-between text-xs text-text2 mb-1"><span>{item.label}</span><span className="font-bold">{item.val}%</span></div>
-                <div className="pbar"><div className={`pbar-fill ${item.color}`} style={{width:`${item.val}%`}}/></div>
-              </div>
-            ))}
-            
-            {/* התרעה על פקטור חוסם */}
-            {((totalNeed > 0 && stats.equipPct < 40) || (stats.total > 0 && Math.round(stats.trained/stats.total*100) < 50)) && (
-              <div className="text-red-400 text-xs font-bold pt-2 border-t border-border1">
-                ⛔ פקטור חוסם: ציון המוכנות מוגבל ל-50% עקב פער קריטי בציוד או בהכשרות.
-              </div>
-            )}
-            
-            {incidents.length > 0 && (
-              <div className="text-red-400 text-xs font-bold pt-2 border-t border-border1">
-                ⚠️ שים לב: קיימים {incidents.length} חריגים שמורידים את הציון הכולל!
-              </div>
-            )}
-            <div className="pt-2 border-t border-border1 flex items-center justify-between"><span className="text-text3 text-xs">מדד כולל לאחר שקלול קנסות</span><span className={`text-xl font-black ${readinessColor}`}>{readinessDisplay}</span></div>
-          </div>
-        </div>
-      </div>
+      {viewMode === 'ai' && <DutyOfficerAI />}
     </div>
   )
 }
