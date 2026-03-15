@@ -1,4 +1,3 @@
-import { HALACHA_DB } from './knowledge.js';
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
@@ -7,19 +6,16 @@ export default async function handler(req) {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey)
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY לא מוגדר' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } });
+    return new Response(
+      `data: ${JSON.stringify({candidates:[{content:{parts:[{text:'❌ GEMINI_API_KEY לא מוגדר ב-Vercel Environment Variables.'}]}}]})}\n\n`,
+      { headers: { 'Content-Type': 'text/event-stream' } }
+    );
 
   try {
     const { messages, systemPrompt } = await req.json();
 
-    const system = `${systemPrompt}
-
-=== ספר ההכשרות הצבאי (פסח תשפ"ו) ===
-${HALACHA_DB.slice(0, 8000)}
-=== סוף הספר ===
-
-הנחיות: ענה בעברית קצרה וברורה. התבסס על הספר בלבד. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
+    const system = (systemPrompt || 'אתה רב צבאי מומחה בהלכות פסח. ענה בעברית קצרה וברורה לחיילים.') +
+      '\n\nבסוף כל תשובה: "בכל ספק — פנה לרב היחידה."';
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
@@ -28,19 +24,26 @@ ${HALACHA_DB.slice(0, 8000)}
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
-          contents: messages.map(m => ({
+          contents: (messages||[]).map(m => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }]
           })),
-          generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
+          generationConfig: { temperature: 0.1, maxOutputTokens: 800 }
         })
       }
     );
 
     if (!res.ok) {
-      const err = await res.text();
-      return new Response(JSON.stringify({ error: err }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } });
+      const errText = await res.text();
+      let errMsg = `שגיאה מ-Gemini (${res.status})`;
+      try {
+        const errJson = JSON.parse(errText);
+        errMsg = errJson?.error?.message || errMsg;
+      } catch {}
+      return new Response(
+        `data: ${JSON.stringify({candidates:[{content:{parts:[{text:`❌ ${errMsg}`}]}}]})}\n\n`,
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
+      );
     }
 
     return new Response(res.body, {
@@ -52,7 +55,9 @@ ${HALACHA_DB.slice(0, 8000)}
     });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } });
+    return new Response(
+      `data: ${JSON.stringify({candidates:[{content:{parts:[{text:`❌ שגיאת שרת: ${e.message}`}]}}]})}\n\n`,
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
+    );
   }
 }
