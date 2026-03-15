@@ -13,8 +13,9 @@ const STATUS_ICON  = { available:'✅', zoom:'💻', away:'⬅️', leave:'🏠'
 function PersonnelTab() {
   const { currentUnit, showToast } = useStore()
   const [people, setPeople]       = useState([])
+  const [posts, setPosts]         = useState([]) // הוספנו את המקומות חזרה
   const [modal,  setModal]        = useState(false)
-  const [form,   setForm]         = useState({ name:'', role:'סגל', status:'available', targetUnit:'' })
+  const [form,   setForm]         = useState({ name:'', role:'סגל', status:'available', targetUnit:'', post_id:'' })
   const [search, setSearch]       = useState('')
 
   const leafUnits = getLeafUnits(currentUnit.id)
@@ -25,29 +26,42 @@ function PersonnelTab() {
   async function load() {
     try {
       const ids = leafUnits.length > 0 ? leafUnits.map(u => u.id) : [currentUnit.id]
-      const q = ids.length === 1
-        ? supabase.from('personnel').select('*').eq('unit_id', ids[0])
-        : supabase.from('personnel').select('*').in('unit_id', ids)
-      const { data } = await q.order('name')
-      setPeople(data || [])
-    } catch { setPeople([]) }
+      
+      const [persRes, postsRes] = await Promise.all([
+        ids.length === 1
+          ? supabase.from('personnel').select('*').eq('unit_id', ids[0]).order('name')
+          : supabase.from('personnel').select('*').in('unit_id', ids).order('name'),
+        ids.length === 1
+          ? supabase.from('unit_posts').select('*').eq('unit_id', ids[0]).order('name')
+          : supabase.from('unit_posts').select('*').in('unit_id', ids).order('name')
+      ])
+
+      setPeople(persRes.data || [])
+      setPosts(postsRes.data || [])
+    } catch { setPeople([]); setPosts([]) }
   }
 
   async function save() {
     if (!form.name) return
     let targetUnitId = currentUnit.id
+    
     if (canManageMultiple) {
       if (form.targetUnit) targetUnitId = form.targetUnit
       else { alert('בחר יחידה יעד לאיש הצוות'); return }
     }
+
     await supabase.from('personnel').insert({
       unit_id: targetUnitId,
-      name: form.name, role: form.role,
-      status: form.status, training_status: 'none'
+      name: form.name, 
+      role: form.role,
+      status: form.status, 
+      post_id: form.post_id || null, // שומרים את השיוך למקום!
+      training_status: 'none'
     })
+    
     showToast(`${form.name} נוסף ✅`, 'green')
     setModal(false)
-    setForm({ name:'', role:'סגל', status:'available', targetUnit:'' })
+    setForm({ name:'', role:'סגל', status:'available', targetUnit:'', post_id:'' })
     load()
   }
 
@@ -56,8 +70,15 @@ function PersonnelTab() {
     setPeople(p => p.map(x => x.id===id ? {...x,status} : x))
   }
 
+  // פונקציה מהירה לעדכון המקום היישר מהרשימה של כוח האדם
+  async function assignPost(personId, postId) {
+    await supabase.from('personnel').update({ post_id: postId || null }).eq('id', personId)
+    setPeople(p => p.map(x => x.id === personId ? { ...x, post_id: postId || null } : x))
+    showToast('שיוך עודכן בהצלחה', 'green')
+  }
+
   async function remove(id) {
-    if (!confirm('למחוק?')) return
+    if (!confirm('למחוק איש צוות זה?')) return
     await supabase.from('personnel').delete().eq('id', id); load()
   }
 
@@ -88,20 +109,36 @@ function PersonnelTab() {
           <div key={p.id} className={`card px-3 py-2.5 flex flex-wrap items-center gap-2 ${p.status==='unavailable'?'opacity-50':''}`}>
             <div className="min-w-0 flex-1">
               <div className="font-bold text-sm truncate">{p.name}</div>
-              <div className="text-text3 text-xs truncate">
-                {p.role} {canManageMultiple && p.unit_id !== currentUnit.id && ` · ${unitLabel(p.unit_id)}`}
+              
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] bg-bg2 text-text3 px-1.5 py-0.5 rounded">{p.role}</span>
+                {canManageMultiple && p.unit_id !== currentUnit.id && <span className="text-[10px] text-text3 px-1">· {unitLabel(p.unit_id)}</span>}
+                
+                {/* התפריט לשיוך מהיר היישר מכוח האדם! */}
+                <select 
+                  className="bg-transparent border-none outline-none cursor-pointer text-gold text-[11px] hover:bg-bg3 rounded px-1 transition-colors w-32 truncate"
+                  value={p.post_id || ''}
+                  onChange={e => assignPost(p.id, e.target.value)}
+                  disabled={p.status === 'unavailable'}
+                >
+                  <option value="">ללא שיוך למקום</option>
+                  {posts.filter(post => !canManageMultiple || post.unit_id === p.unit_id).map(post => (
+                    <option key={post.id} value={post.id}>{post.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
+            
             <div className="flex gap-0.5 flex-shrink-0 ml-auto">
               {Object.entries(STATUS_ICON).map(([k,icon]) => (
                 <button key={k} title={STATUS_LABEL[k]} onClick={()=>setStatus(p.id,k)}
                   className={`text-sm px-0.5 transition-all leading-none ${p.status===k?'opacity-100 scale-110':'opacity-25 hover:opacity-60'}`}>{icon}</button>
               ))}
             </div>
-            <button className="btn btn-red btn-sm flex-shrink-0 w-7 h-7 p-0 flex items-center justify-center" onClick={()=>remove(p.id)}>🗑</button>
+            <button className="btn btn-red btn-sm flex-shrink-0 w-7 h-7 p-0 flex items-center justify-center ml-2" onClick={()=>remove(p.id)}>🗑</button>
           </div>
         ))}
-        {filtered.length===0 && <div className="card p-8 text-center text-text3">אין אנשים — לחץ "+ הוסף"</div>}
+        {filtered.length===0 && <div className="card p-8 text-center text-text3">אין אנשים — לחץ "+ הוסף איש צוות"</div>}
       </div>
 
       <Modal open={modal} onClose={()=>setModal(false)} title="➕ הוספת איש צוות">
@@ -124,17 +161,29 @@ function PersonnelTab() {
               <option value="leave">🏠 שחרור</option><option value="unavailable">❌ אינו זמין</option>
             </select>
           </div>
+
           {canManageMultiple && (
             <div className="col-span-2">
               <label className="text-xs text-text3 font-bold block mb-1">⚠ יחידה יעד *</label>
-              <select className="form-input" value={form.targetUnit} onChange={e=>setForm(f=>({...f,targetUnit:e.target.value}))}>
+              <select className="form-input" value={form.targetUnit} onChange={e=>setForm(f=>({...f,targetUnit:e.target.value, post_id:''}))}>
                 <option value="">בחר יחידה...</option>
                 {leafUnits.map(u=><option key={u.id} value={u.id}>{u.icon} {u.name}</option>)}
               </select>
             </div>
           )}
+
+          {/* שיוך למקום מתוך מסך ההוספה */}
+          <div className="col-span-2">
+            <label className="text-xs text-text3 font-bold block mb-1">שיוך למקום (אופציונלי)</label>
+            <select className="form-input border-gold/50 text-gold" value={form.post_id} onChange={e=>setForm(f=>({...f,post_id:e.target.value}))}>
+              <option value="">-- ללא שיוך --</option>
+              {posts.filter(p => !canManageMultiple || p.unit_id === (form.targetUnit || currentUnit.id)).map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.type})</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <ModalButtons onClose={()=>setModal(false)} onSave={save} saveLabel="הוסף"/>
+        <ModalButtons onClose={()=>setModal(false)} onSave={save} saveLabel="הוסף למערכת"/>
       </Modal>
     </div>
   )
