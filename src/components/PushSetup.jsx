@@ -70,22 +70,27 @@ export default function PushSetup() {
       const reg = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
 
-      // בטל subscription ישן אם קיים
-      const oldSub = await reg.pushManager.getSubscription()
-      if (oldSub) await oldSub.unsubscribe()
+      // בדוק אם כבר קיים subscription — אם כן, השתמש בו
+      const existingSub = await reg.pushManager.getSubscription()
+      let sub = existingSub
 
-      // צור subscription חדש
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC)
-      })
+      // צור subscription חדש רק אם אין
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC)
+        })
+      }
 
-      // מחק רשומות ישנות של היחידה הזו ורשום חדש
-      await supabase.from('push_subscriptions').delete().eq('unit_id', currentUnit.id)
-      await supabase.from('push_subscriptions').insert({
-        unit_id: currentUnit.id,
-        subscription: sub.toJSON()
-      })
+      // רשום ב-Supabase אם אין עדיין
+      const { data: existing } = await supabase
+        .from('push_subscriptions').select('id').eq('unit_id', currentUnit.id).limit(1)
+      if (!existing || existing.length === 0) {
+        await supabase.from('push_subscriptions').insert({
+          unit_id: currentUnit.id,
+          subscription: sub.toJSON()
+        })
+      }
 
       setStatus('registered')
       showToast('🔔 התראות פוש חוברו בהצלחה!', 'green')
@@ -129,10 +134,11 @@ export default function PushSetup() {
           🔔 הפעל קבלת התראות לפלאפון
         </button>
       ) : (
-        <button onClick={testPush}
-          className="flex-1 btn bg-green-900/40 border-green-500/50 text-green-300 hover:bg-green-800/50">
-          📲 מחובר ✓ — לחץ לבדיקת התראה
-        </button>
+        // מחובר — אין אפשרות לנתק (רק פיקוד מרכז יכול לנתק יחידה)
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-green-900/20 border border-green-500/30">
+          <span className="text-green-400 text-sm">📲 התראות פעילות ✓</span>
+          <span className="text-text3 text-xs mr-auto">לניתוק — פנה לפיקוד מרכז</span>
+        </div>
       )}
     </div>
   )
