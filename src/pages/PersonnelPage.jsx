@@ -13,7 +13,7 @@ const STATUS_ICON  = { available:'✅', zoom:'💻', away:'⬅️', leave:'🏠'
 function PersonnelTab() {
   const { currentUnit, showToast } = useStore()
   const [people, setPeople]       = useState([])
-  const [posts, setPosts]         = useState([]) // הוספנו את המקומות חזרה
+  const [posts, setPosts]         = useState([]) 
   const [modal,  setModal]        = useState(false)
   const [form,   setForm]         = useState({ name:'', role:'סגל', status:'available', targetUnit:'', post_id:'' })
   const [search, setSearch]       = useState('')
@@ -55,7 +55,7 @@ function PersonnelTab() {
       name: form.name, 
       role: form.role,
       status: form.status, 
-      post_id: form.post_id || null, // שומרים את השיוך למקום!
+      post_id: form.post_id || null, 
       training_status: 'none'
     })
     
@@ -70,7 +70,6 @@ function PersonnelTab() {
     setPeople(p => p.map(x => x.id===id ? {...x,status} : x))
   }
 
-  // פונקציה מהירה לעדכון המקום היישר מהרשימה של כוח האדם
   async function assignPost(personId, postId) {
     await supabase.from('personnel').update({ post_id: postId || null }).eq('id', personId)
     setPeople(p => p.map(x => x.id === personId ? { ...x, post_id: postId || null } : x))
@@ -114,7 +113,6 @@ function PersonnelTab() {
                 <span className="text-[10px] bg-bg2 text-text3 px-1.5 py-0.5 rounded">{p.role}</span>
                 {canManageMultiple && p.unit_id !== currentUnit.id && <span className="text-[10px] text-text3 px-1">· {unitLabel(p.unit_id)}</span>}
                 
-                {/* התפריט לשיוך מהיר היישר מכוח האדם! */}
                 <select 
                   className="bg-transparent border-none outline-none cursor-pointer text-gold text-[11px] hover:bg-bg3 rounded px-1 transition-colors w-32 truncate"
                   value={p.post_id || ''}
@@ -172,13 +170,12 @@ function PersonnelTab() {
             </div>
           )}
 
-          {/* שיוך למקום מתוך מסך ההוספה */}
           <div className="col-span-2">
             <label className="text-xs text-text3 font-bold block mb-1">שיוך למקום (אופציונלי)</label>
             <select className="form-input border-gold/50 text-gold" value={form.post_id} onChange={e=>setForm(f=>({...f,post_id:e.target.value}))}>
               <option value="">-- ללא שיוך --</option>
               {posts.filter(p => !canManageMultiple || p.unit_id === (form.targetUnit || currentUnit.id)).map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.type})</option>
+                <option key={p.id} value={p.id}>{p.name} ({p.type || 'כללי'})</option>
               ))}
             </select>
           </div>
