@@ -280,6 +280,15 @@ export function TimelinePage() {
     setModal(false); setForm({ title:'', description:'', due_date:'', category:'כללי' }); load()
   }
 
+  async function deleteMilestone(id, e) {
+    e.stopPropagation()
+    if (!confirm('למחוק אבן דרך זו לצמיתות?')) return
+    await supabase.from('milestone_status').delete().eq('milestone_id', id)
+    await supabase.from('milestones').delete().eq('id', id)
+    showToast('אבן דרך נמחקה', 'red')
+    load()
+  }
+
   async function cycleMs(ms) {
     const cur = statuses[ms.id]?.status || 'pending'
     const next = { pending:'in_progress', in_progress:'done', done:'pending' }[cur]
@@ -436,9 +445,16 @@ export function TimelinePage() {
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${color}`}>{ms.category}</span>
                         <span className="font-black">{ms.title}</span>
                       </div>
-                      <span className={`badge ${st==='done'?'badge-green':st==='in_progress'?'badge-orange':'badge-dim'}`}>
-                        {st==='done'?'✓ הושלם':st==='in_progress'?'בתהליך':'ממתין'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`badge ${st==='done'?'badge-green':st==='in_progress'?'badge-orange':'badge-dim'}`}>
+                          {st==='done'?'✓ הושלם':st==='in_progress'?'בתהליך':'ממתין'}
+                        </span>
+                        {(isAdmin||isSenior) && (
+                          <button onClick={e=>deleteMilestone(ms.id,e)}
+                            className="text-red-400/50 hover:text-red-400 transition-colors text-sm"
+                            title="מחק אבן דרך">🗑</button>
+                        )}
+                      </div>
                     </div>
                     {ms.description && <p className="text-text3 text-xs mb-1">{ms.description}</p>}
                     <div className={`text-xs font-bold ${overdue?'text-red-400':'text-text3'}`}>

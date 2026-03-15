@@ -7,128 +7,115 @@ import { getLeafUnits, UNITS } from '../lib/units'
 const LOGO_CACHE = {}
 
 export default function Dashboard() {
-  const { currentUnit, setPage, isSenior, isAdmin } = useStore()
+  const { currentUnit, activePage, setPage, isSenior, isAdmin } = useStore()
+  
   const [stats, setStats] = useState({ trained:0, active:0, available:0, missingEquip:0, cleanPct:0, total:0 })
   const [tasks, setTasks] = useState([])
   const [incidents, setIncidents] = useState([])
   const [loading, setLoading] = useState(true)
   const [unitLogo, setUnitLogo] = useState(LOGO_CACHE[currentUnit?.id] || null)
   const [readiness, setReadiness] = useState(0)
-  const [silentUnits, setSilentUnits] = useState([])   // יחידות ללא דיווח 24 שעות
-  const [lastActivity, setLastActivity] = useState({}) // unit_id → last created_at
+  const [silentUnits, setSilentUnits] = useState([])
+  const [lastActivity, setLastActivity] = useState({})
   const days = Math.max(0, Math.ceil((new Date('2026-04-02') - new Date()) / 86400000))
 
   useEffect(() => {
-    if (!currentUnit) return
+    if (!currentUnit || activePage !== 'dashboard') return
     loadStats()
     if (!LOGO_CACHE[currentUnit.id]) loadLogo()
     const ch = supabase.channel('dashboard_rt_' + currentUnit.id)
-      .on('postgres_changes', { event:'*', schema:'public', table:'incidents' },   () => loadStats())
-      .on('postgres_changes', { event:'*', schema:'public', table:'personnel' },   () => loadStats())
-      .on('postgres_changes', { event:'*', schema:'public', table:'equipment' },   () => loadStats())
+      .on('postgres_changes', { event:'*', schema:'public', table:'incidents' },      () => loadStats())
+      .on('postgres_changes', { event:'*', schema:'public', table:'personnel' },      () => loadStats())
+      .on('postgres_changes', { event:'*', schema:'public', table:'equipment' },      () => loadStats())
       .on('postgres_changes', { event:'*', schema:'public', table:'cleaning_areas' }, () => loadStats())
       .subscribe()
-    return () => supabase.removeChannel(ch)
-  }, [currentUnit])
+    const poll = setInterval(() => loadStats(), 15000)
+    return () => { supabase.removeChannel(ch); clearInterval(poll) }
+  }, [currentUnit, activePage])
 
   async function loadStats() {
     try {
-    const uid = currentUnit.id
-    const subs = getLeafUnits(uid)
-    const ids = subs.length > 0 ? subs.map(u => u.id) : [uid]
-    const inF = q => ids.length === 1 ? q.eq('unit_id', ids[0]) : q.in('unit_id', ids)
+      const uid = currentUnit.id
+      const subs = getLeafUnits(uid) || []
+      // תיקון קריטי: כולל את uid עצמו + כל תתי-היחידות
+      const ids = Array.from(new Set([uid, ...subs.map(u => u.id)]))
+      const inF = q => ids.length === 1 ? q.eq('unit_id', ids[0]) : q.in('unit_id', ids)
 
-    const [pers, equip, areas, openTasks, openInc, postsRes, lastPers, lastInc, lastClean] = await Promise.all([
-      inF(supabase.from('personnel').select('status,training_status,unit_id')),
-      inF(supabase.from('equipment').select('have,need,unit_id')),
-      inF(supabase.from('cleaning_areas').select('status,unit_id,updated_at')),
-      inF(supabase.from('tasks').select('id,title,priority,status,assigned_by').neq('status','done').order('created_at',{ascending:false}).limit(4)),
-      inF(supabase.from('incidents').select('id,title,severity,unit_id').eq('status','open').order('created_at',{ascending:false}).limit(3)),
-      // עמדות היחידה — לחישוב מוכנות כיסוי (עם fallback אם טבלה לא קיימת)
-      (ids.length === 1
-        ? supabase.from('unit_posts').select('id,required,unit_id').eq('unit_id', ids[0])
-        : supabase.from('unit_posts').select('id,required,unit_id').in('unit_id', ids)
-      ).catch(() => ({ data: [] })),
-      // לצורך זיהוי פעילות אחרונה
-      inF(supabase.from('personnel').select('unit_id,created_at').order('created_at',{ascending:false}).limit(200)),
-      inF(supabase.from('incidents').select('unit_id,created_at').order('created_at',{ascending:false}).limit(100)),
-      inF(supabase.from('cleaning_areas').select('unit_id,updated_at').order('updated_at',{ascending:false}).limit(100)),
-    ])
+      const [pers, equip, areas, openTasks, openInc, postsRes, lastPers, lastInc, lastClean] = await Promise.all([
+        inF(supabase.from('personnel').select('status,training_status,unit_id')),
+        inF(supabase.from('equipment').select('have,need,unit_id')),
+        inF(supabase.from('cleaning_areas').select('status,unit_id,updated_at')),
+        inF(supabase.from('tasks').select('id,title,priority,status,assigned_by').neq('status','done').order('created_at',{ascending:false}).limit(4)),
+        inF(supabase.from('incidents').select('id,title,severity,unit_id').eq('status','open').order('created_at',{ascending:false}).limit(3)),
+        (ids.length === 1
+          ? supabase.from('unit_posts').select('id,required,unit_id').eq('unit_id', ids[0])
+          : supabase.from('unit_posts').select('id,required,unit_id').in('unit_id', ids)
+        ).catch(() => ({ data: [] })),
+        inF(supabase.from('personnel').select('unit_id,status').order('unit_id')),
+        inF(supabase.from('incidents').select('unit_id,status')),
+        inF(supabase.from('cleaning_areas').select('unit_id,updated_at').order('updated_at',{ascending:false}).limit(100)),
+      ])
 
-    const p = pers.data||[], e = equip.data||[], a = areas.data||[]
-    const trained = p.filter(x=>x.training_status==='done').length
-    const missingEquip = e.filter(x=>x.have<x.need).length
-    const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
-    const openIncCount = openInc.data?.length || 0
+      const p = pers.data||[], e = equip.data||[], a = areas.data||[]
+      const trained = p.filter(x=>x.training_status==='done').length
+      const missingEquip = e.filter(x=>x.have<x.need).length
+      const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
+      const openIncCount = openInc.data?.length || 0
 
-    setStats({
-      trained, active: p.filter(x=>x.training_status==='active').length,
-      available: p.filter(x=>x.status==='available').length,
-      missingEquip, cleanPct, total: p.length,
-    })
-    setTasks(openTasks.data||[])
-    setIncidents(openInc.data||[])
+      setStats({
+        trained, active: p.filter(x=>x.training_status==='active').length,
+        available: p.filter(x=>x.status==='available').length,
+        missingEquip, cleanPct, total: p.length,
+      })
+      setTasks(openTasks.data||[])
+      setIncidents(openInc.data||[])
 
-    // ── מדד מוכנות לפסח ──
-    const posts = postsRes.data || []
-    const hasData = p.length > 0 || a.length > 0 || e.length > 0
-    if (!hasData) { setReadiness(-1); setLoading(false); return }
+      // מוכנות
+      const posts = postsRes.data || []
+      const hasData = p.length > 0 || a.length > 0 || e.length > 0
+      if (!hasData) { setReadiness(-1); setLoading(false); return }
 
-    // הכשרה
-    const trainedPct = p.length ? Math.round(trained/p.length*100) : 0
+      const trainedPct = p.length ? Math.round(trained/p.length*100) : 0
+      const unavailablePct = p.length ? Math.round(p.filter(x=>x.status==='unavailable').length/p.length*100) : 0
+      const personnelScore = p.length ? Math.max(0, 100 - unavailablePct * 1.5) : 0
 
-    // זמינות כוח אדם — "אינו זמין" מוריד
-    const unavailablePct = p.length ? Math.round(p.filter(x=>x.status==='unavailable').length/p.length*100) : 0
-    const personnelScore = p.length ? Math.max(0, 100 - unavailablePct * 1.5) : 0
-
-    // כיסוי עמדות — עמדה ללא כוח אדם מורידה
-    let postScore = 100
-    if (posts.length > 0) {
-      const availPeople = p.filter(x=>x.status!=='unavailable')
-      const totalRequired = posts.reduce((s,post)=>s+post.required,0)
-      const totalCovered = Math.min(availPeople.length, totalRequired)
-      postScore = totalRequired > 0 ? Math.round(totalCovered/totalRequired*100) : 100
-    }
-
-    // ציוד
-    const hasEquip = e.length > 0
-    const equipScore = !hasEquip ? null : missingEquip === 0 ? 100 : Math.max(0, 100 - missingEquip * 12)
-
-    // ניקיון
-    const hasClean = a.length > 0
-
-    // חישוב משוקלל
-    let total = 0, weight = 0
-    if (p.length > 0)       { total += trainedPct    * 0.25; weight += 0.25 }
-    if (p.length > 0)       { total += personnelScore * 0.15; weight += 0.15 }
-    if (posts.length > 0)   { total += postScore      * 0.20; weight += 0.20 }
-    if (hasClean)           { total += cleanPct       * 0.20; weight += 0.20 }
-    if (hasEquip)           { total += equipScore     * 0.20; weight += 0.20 }
-    const r = weight > 0 ? Math.round(total / weight) : 0
-    setReadiness(r)
-
-    // ── יחידות ללא דיווח (24 שעות) — רק לאוגדות / פיקוד ──
-    if (subs.length > 0) {
-      const cutoff = new Date(Date.now() - 24*60*60*1000).toISOString()
-      // בנה מפה: unit_id → תאריך פעילות אחרונה
-      const activity = {}
-      for (const row of [...(lastPers.data||[]), ...(lastInc.data||[])]) {
-        const ts = row.created_at
-        if (!activity[row.unit_id] || ts > activity[row.unit_id]) activity[row.unit_id] = ts
+      let postScore = 100
+      if (posts.length > 0) {
+        const availPeople = p.filter(x=>x.status!=='unavailable')
+        const totalRequired = posts.reduce((s,post)=>s+post.required,0)
+        postScore = totalRequired > 0 ? Math.round(Math.min(availPeople.length,totalRequired)/totalRequired*100) : 100
       }
-      for (const row of (lastClean.data||[])) {
-        const ts = row.updated_at
-        if (!activity[row.unit_id] || ts > activity[row.unit_id]) activity[row.unit_id] = ts
+
+      const hasEquip = e.length > 0
+      const equipScore = !hasEquip ? null : missingEquip===0 ? 100 : Math.max(0, 100-missingEquip*12)
+      const hasClean = a.length > 0
+
+      let total = 0, weight = 0
+      if (p.length > 0)     { total += trainedPct    * 0.25; weight += 0.25 }
+      if (p.length > 0)     { total += personnelScore * 0.15; weight += 0.15 }
+      if (posts.length > 0) { total += postScore      * 0.20; weight += 0.20 }
+      if (hasClean)         { total += cleanPct       * 0.20; weight += 0.20 }
+      if (hasEquip)         { total += equipScore     * 0.20; weight += 0.20 }
+      setReadiness(weight > 0 ? Math.round(total/weight) : 0)
+
+      // יחידות ללא דיווח
+      if (subs.length > 0) {
+        const cutoff = new Date(Date.now() - 24*60*60*1000).toISOString()
+        const activity = {}
+        for (const row of [...(lastPers.data||[]), ...(lastInc.data||[])]) {
+          const ts = row.created_at || row.updated_at
+          if (ts && (!activity[row.unit_id] || ts > activity[row.unit_id])) activity[row.unit_id] = ts
+        }
+        for (const row of (lastClean.data||[])) {
+          const ts = row.updated_at
+          if (ts && (!activity[row.unit_id] || ts > activity[row.unit_id])) activity[row.unit_id] = ts
+        }
+        setLastActivity(activity)
+        const leafSubs = subs.filter(u => !u.is_senior && !u.is_admin)
+        setSilentUnits(leafSubs.filter(u => !activity[u.id] || activity[u.id] < cutoff))
       }
-      setLastActivity(activity)
 
-      // יחידות עלים (לא אוגדות) שלא עדכנו
-      const leafSubs = subs.filter(u => !u.is_senior && !u.is_admin)
-      const silent = leafSubs.filter(u => !activity[u.id] || activity[u.id] < cutoff)
-      setSilentUnits(silent)
-    }
-
-    setLoading(false)
+      setLoading(false)
     } catch(err) {
       console.error('loadStats error:', err)
       setLoading(false)
@@ -143,16 +130,16 @@ export default function Dashboard() {
   const priColor = { urgent:'badge badge-red', high:'badge badge-orange', normal:'badge badge-blue' }
   const priLabel = { urgent:'דחוף', high:'גבוה', normal:'בינוני' }
   const noData = readiness === -1
-  const readinessColor = noData ? 'text-text3' : readiness >= 80 ? 'text-green-400' : readiness >= 60 ? 'text-orange-400' : 'text-red-400'
-  const readinessBg    = noData ? 'bg-border2'  : readiness >= 80 ? 'bg-green-500'  : readiness >= 60 ? 'bg-orange-500'  : 'bg-red-500'
-  const readinessLabel = noData ? 'טרם הוזנו נתונים' : readiness >= 80 ? 'מוכן לפסח ✅' : readiness >= 60 ? 'בתהליך 🔄' : 'דורש טיפול ⚠️'
-  const readinessDisplay = noData ? '—' : readiness + '%'
+  const readinessColor = noData ? 'text-text3' : readiness>=80 ? 'text-green-400' : readiness>=60 ? 'text-orange-400' : 'text-red-400'
+  const readinessBg    = noData ? 'bg-border2'  : readiness>=80 ? 'bg-green-500'  : readiness>=60 ? 'bg-orange-500'  : 'bg-red-500'
+  const readinessLabel = noData ? 'טרם הוזנו נתונים' : readiness>=80 ? 'מוכן לפסח ✅' : readiness>=60 ? 'בתהליך 🔄' : 'דורש טיפול ⚠️'
+  const readinessDisplay = noData ? '—' : readiness+'%'
 
   function timeSince(ts) {
-    const m = Math.floor((Date.now() - new Date(ts)) / 60000)
-    if (m < 60) return `לפני ${m} דק'`
+    const m = Math.floor((Date.now()-new Date(ts))/60000)
+    if (m<60) return `לפני ${m} דק'`
     const h = Math.floor(m/60)
-    if (h < 24) return `לפני ${h} שעות`
+    if (h<24) return `לפני ${h} שעות`
     return `לפני ${Math.floor(h/24)} ימים`
   }
 
@@ -167,28 +154,25 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-
-      {/* ── Hero ── */}
+      {/* Hero */}
       <div className="card p-5 bg-gradient-to-l from-[#1a2040] to-bg2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-bg3 border border-border2 flex items-center justify-center overflow-hidden flex-shrink-0">
             {unitLogo
               ? <img src={unitLogo} alt={currentUnit?.name} className="w-full h-full object-cover"/>
-              : <span className="text-3xl">{currentUnit?.icon || '✡'}</span>}
+              : <span className="text-3xl">{currentUnit?.icon||'✡'}</span>}
           </div>
           <div>
             <h2 className="text-2xl font-black mb-1">שלום, {currentUnit?.name} 👋</h2>
             <p className="text-text2 text-sm">מבצע פסח תשפ"ו — רבנות פיקוד מרכז</p>
           </div>
         </div>
-
-        {/* מדד מוכנות */}
         <div className="flex items-center gap-4 flex-shrink-0">
           <div className="text-center">
             <div className={`text-5xl font-black leading-none ${readinessColor}`}>{readinessDisplay}</div>
             <div className="text-text3 text-xs mt-1">{readinessLabel}</div>
             <div className="w-32 pbar h-2.5 rounded-full mt-2">
-              <div className={`pbar-fill ${readinessBg} rounded-full`} style={{width:`${readinessDisplay}`}}/>
+              <div className={`pbar-fill ${readinessBg} rounded-full`} style={{width:noData?'0%':readiness+'%'}}/>
             </div>
           </div>
           <div className="text-center bg-bg3 rounded-2xl px-6 py-3 border border-border2">
@@ -198,15 +182,15 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── KPI Bar ── */}
+      {/* KPI Bar */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
-          { icon:'🕐', label:'ימים לפסח', val: days, valCls: days<=7?'text-red-400':days<=14?'text-orange-400':'text-gold' },
-          { icon:'📊', label:'מוכנות', val:`${readinessDisplay}`, valCls: readinessColor },
-          { icon:'👥', label:'כוח אדם', val: stats.total, valCls: stats.total>0?'text-blue-400':'text-text3' },
-          { icon:'🎓', label:'הכשרה', val:`${stats.total?Math.round(stats.trained/stats.total*100):0}%`, valCls: stats.total&&stats.trained/stats.total>=0.7?'text-green-400':stats.total?'text-orange-400':'text-text3' },
-          { icon:'📦', label:'ציוד חסר', val: stats.missingEquip, valCls: stats.missingEquip===0?'text-green-400':'text-red-400' },
-          { icon:'🆘', label:'חריגים', val: incidents.length, valCls: incidents.length===0?'text-green-400':'text-red-400 animate-pulse' },
+          { icon:'🕐', label:'ימים לפסח', val:days, valCls:days<=7?'text-red-400':days<=14?'text-orange-400':'text-gold' },
+          { icon:'📊', label:'מוכנות', val:readinessDisplay, valCls:readinessColor },
+          { icon:'👥', label:'כוח אדם', val:stats.total, valCls:stats.total>0?'text-blue-400':'text-text3' },
+          { icon:'🎓', label:'הכשרה', val:`${stats.total?Math.round(stats.trained/stats.total*100):0}%`, valCls:stats.total&&stats.trained/stats.total>=0.7?'text-green-400':stats.total?'text-orange-400':'text-text3' },
+          { icon:'📦', label:'ציוד חסר', val:stats.missingEquip, valCls:stats.missingEquip===0?'text-green-400':'text-red-400' },
+          { icon:'🆘', label:'חריגים', val:incidents.length, valCls:incidents.length===0?'text-green-400':'text-red-400 animate-pulse' },
         ].map(item=>(
           <div key={item.label} className="card p-3 text-center border border-border1">
             <div className="text-lg mb-0.5">{item.icon}</div>
@@ -216,7 +200,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* ── יחידות ללא דיווח ── */}
+      {/* יחידות ללא דיווח */}
       {silentUnits.length > 0 && (
         <div className="bg-orange-900/20 border border-orange-500/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -237,7 +221,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── חריגים alert ── */}
+      {/* חריגים */}
       {incidents.length > 0 && (
         <div className="bg-red-900/20 border border-red-500/40 rounded-xl p-4 flex items-center gap-3 cursor-pointer"
           onClick={() => setPage('incidents')}>
@@ -250,7 +234,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── KPIs ── */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiCard label="כוח אדם" value={stats.total} sub="אנשים" color="blue"/>
         <KpiCard label="בהכשרה" value={stats.active} color="orange"/>
@@ -259,7 +243,7 @@ export default function Dashboard() {
         <KpiCard label="הכשרה" value={`${stats.total?Math.round(stats.trained/stats.total*100):0}%`} sub={`${stats.trained} מתוך ${stats.total}`} color="green"/>
       </div>
 
-      {/* ── Tasks + Progress ── */}
+      {/* Tasks + Progress */}
       <div className="grid md:grid-cols-2 gap-5">
         <div className="card">
           <div className="panel-head">
@@ -277,35 +261,30 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-
         <div className="card">
           <div className="panel-head"><span className="panel-title">📊 פירוט מוכנות</span></div>
           <div className="p-5 space-y-4">
             {[
               { label:'כוח אדם',
-                val: stats.total > 0 ? Math.round(stats.available/stats.total*100) : 0,
+                val: stats.total>0 ? Math.round(stats.available/stats.total*100) : 0,
                 color: stats.total>0 ? 'bg-blue-500' : 'bg-border2',
                 text: stats.total===0 ? 'אין נתונים' : `${stats.available}/${stats.total}` },
               { label:'הכשרה',
                 val: stats.total ? Math.round(stats.trained/stats.total*100) : 0,
                 color: stats.total ? (stats.trained/stats.total>=0.7?'bg-green-500':'bg-orange-500') : 'bg-border2' },
-              // ציוד: 0% כשאין ציוד כלל, 100% רק אם יש ציוד ואין חסרים
               { label:'ציוד',
-                val: noData ? 0 : stats.missingEquip===0 && stats.total===0 ? 0 : stats.missingEquip===0 ? 100 : Math.max(5, 100-stats.missingEquip*15),
+                val: noData||stats.total===0 ? 0 : stats.missingEquip===0?100:Math.max(5,100-stats.missingEquip*15),
                 color: noData||stats.total===0 ? 'bg-border2' : stats.missingEquip===0?'bg-green-500':'bg-red-500',
-                text: noData ? 'אין נתונים' : stats.missingEquip===0 && stats.total===0 ? 'אין נתונים' : null },
-              // חריגים: 0% כשאין כוח אדם (אין ממה לדווח), 100% רק אם יש כ"א ואין חריגים
+                text: noData||stats.total===0 ? 'אין נתונים' : null },
               { label:'חריגים',
-                val: noData ? 0 : incidents.length===0 && stats.total===0 ? 0 : incidents.length===0 ? 100 : Math.max(5, 100-incidents.length*30),
+                val: noData||stats.total===0 ? 0 : incidents.length===0?100:Math.max(5,100-incidents.length*30),
                 color: noData||stats.total===0 ? 'bg-border2' : incidents.length===0?'bg-green-500':'bg-red-500',
-                text: noData ? 'אין נתונים' : incidents.length===0 && stats.total===0 ? 'אין נתונים' : null },
+                text: noData||stats.total===0 ? 'אין נתונים' : null },
             ].map(item=>(
               <div key={item.label}>
                 <div className="flex justify-between text-xs text-text2 mb-1">
                   <span>{item.label}</span>
-                  <span className={`font-bold ${item.text?'text-text3':''}`}>
-                    {item.text || item.val+'%'}
-                  </span>
+                  <span className={`font-bold ${item.text?'text-text3':''}`}>{item.text||item.val+'%'}</span>
                 </div>
                 <div className="pbar"><div className={`pbar-fill ${item.color}`} style={{width:`${item.val}%`}}/></div>
               </div>
@@ -317,7 +296,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
     </div>
   )
 }
