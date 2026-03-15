@@ -72,7 +72,7 @@ export default function Dashboard() {
     // ── מדד מוכנות לפסח ──
     const posts = postsRes.data || []
     const hasData = p.length > 0 || a.length > 0 || e.length > 0
-    if (!hasData) { setReadiness(-1); return }
+    if (!hasData) { setReadiness(-1); setLoading(false); return }
 
     // הכשרה
     const trainedPct = p.length ? Math.round(trained/p.length*100) : 0
