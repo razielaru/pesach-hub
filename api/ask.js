@@ -1,39 +1,58 @@
+import { HALACHA_DB } from './knowledge.js';
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+  if (req.method !== 'POST')
+    return new Response('Method Not Allowed', { status: 405 });
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return sendSSE("⚠️ שגיאה: GEMINI_API_KEY לא נמצא ב-Environment Variables של Vercel. אנא הגדר אותו.");
-  }
+  if (!apiKey)
+    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY לא מוגדר' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } });
 
   try {
-    // שלב א': בדיקה אם גוגל בכלל עונה לנו ומה המודלים שיש לך
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    const data = await res.json();
+    const { messages, systemPrompt } = await req.json();
 
-    if (data.error) {
-      return sendSSE(`⚠️ שגיאה מגוגל: ${data.error.message}\nקוד שגיאה: ${data.error.status}`);
+    const system = `${systemPrompt}
+
+=== ספר ההכשרות הצבאי (פסח תשפ"ו) ===
+${HALACHA_DB.slice(0, 8000)}
+=== סוף הספר ===
+
+הנחיות: ענה בעברית קצרה וברורה. התבסס על הספר בלבד. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: messages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+          })),
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
+        })
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      return new Response(JSON.stringify({ error: err }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 
-    const modelList = data.models
-      ? data.models.map(m => m.name.replace('models/', '')).join(', ')
-      : "לא נמצאו מודלים";
-
-    return sendSSE(`🔍 חיבור תקין!\n\nהמודלים הזמינים עבורך הם:\n${modelList}\n\n* תעתיק לי את השמות שמופיעים כאן כדי שנבחר את הנכון.`);
+    return new Response(res.body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+      }
+    });
 
   } catch (e) {
-    return sendSSE(`⚠️ תקלה טכנית בשרת: ${e.message}`);
+    return new Response(JSON.stringify({ error: e.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
-}
-
-// פונקציית עזר לשליחת הודעה בפורמט שהצ'אט שלך מבין
-function sendSSE(text) {
-  const payload = JSON.stringify({
-    candidates: [{ content: { parts: [{ text: text }] } }]
-  });
-  return new Response(`data: ${payload}\n\n`, {
-    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
-  });
 }
