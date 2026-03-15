@@ -51,7 +51,12 @@ export default function CommandPage() {
       const equipMissing = e.filter(x=>x.have<x.need).length
       const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
       const openInc = incs.filter(x => x.unit_id === u.id).length
-      const health = openInc>0||trainedPct<40 ? 'red' : trainedPct<70||equipMissing>2 ? 'orange' : 'green'
+      // אין כוח אדם בכלל → gray (אין נתונים), לא להראות כאדום
+      const hasPersonnel = p.length > 0
+      const health = !hasPersonnel ? 'gray'
+        : openInc>0 || trainedPct<40 ? 'red'
+        : trainedPct<70 || equipMissing>2 ? 'orange'
+        : 'green'
       stats[u.id] = { trainedPct, equipMissing, cleanPct, openInc, health, personnel: p.length }
     })
     setUnitStats(stats)
@@ -162,9 +167,9 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
   const smartAlerts = useSmartAlerts(unitStats, daysLeft)
   const criticalAlerts = smartAlerts.filter(a => a.level === 'critical')
 
-  const healthColor = { green: 'border-green-500 bg-green-900/10', orange: 'border-orange-500 bg-orange-900/10', red: 'border-red-500 bg-red-900/10 animate-pulse' }
-  const healthDot = { green: 'bg-green-500', orange: 'bg-orange-500', red: 'bg-red-500' }
-  const healthLabel = { green: 'תקין', orange: 'דורש תשומת לב', red: '⚠ קריטי' }
+  const healthColor = { green: 'border-green-500 bg-green-900/10', orange: 'border-orange-500 bg-orange-900/10', red: 'border-red-500 bg-red-900/10 animate-pulse', gray: 'border-border2 bg-bg3' }
+  const healthDot = { green: 'bg-green-500', orange: 'bg-orange-500', red: 'bg-red-500', gray: 'bg-border2' }
+  const healthLabel = { green: 'תקין', orange: 'דורש תשומת לב', red: '⚠ קריטי', gray: 'אין נתונים' }
 
   if (loading) return <div className="flex items-center justify-center h-64 text-text3">טוען נתונים...</div>
 
@@ -233,8 +238,16 @@ table{width:100%;border-collapse:collapse;background:#1a1a2e}th{background:#1e3a
           {[
             { label:'הכשרה', val:avgTrained, color:avgTrained>=70?'bg-green-500':avgTrained>=50?'bg-orange-500':'bg-red-500', icon:'🎓' },
             { label:'ניקיון', val:avgClean,   color:avgClean>=70?'bg-green-500':avgClean>=50?'bg-orange-500':'bg-red-500',     icon:'🧹' },
-            { label:'ציוד',   val:totals.length===0?0:totalMissing===0?100:Math.max(0,100-totalMissing*8), color:totals.length===0?'bg-border2':totalMissing===0?'bg-green-500':totalMissing<=3?'bg-orange-500':'bg-red-500', icon:'📦', text:totals.length===0?'אין נתונים':totalMissing===0?'מלא':`חסר ${totalMissing}` },
-            { label:'חריגים', val:totals.length===0?0:totalInc===0?100:Math.max(0,100-totalInc*15), color:totals.length===0?'bg-border2':totalInc===0?'bg-green-500':totalInc<=2?'bg-orange-500':'bg-red-500', icon:'🆘', text:totals.length===0?'אין נתונים':totalInc===0?'נקי':`${totalInc} פתוחים` },
+            { label:'ציוד',
+              val: totals.length===0||totals.every(s=>s.personnel===0) ? 0 : totalMissing===0?100:Math.max(0,100-totalMissing*8),
+              color: totals.length===0||totals.every(s=>s.personnel===0) ? 'bg-border2' : totalMissing===0?'bg-green-500':totalMissing<=3?'bg-orange-500':'bg-red-500',
+              icon:'📦',
+              text: totals.length===0||totals.every(s=>s.personnel===0) ? 'אין נתונים' : totalMissing===0?'מלא':`חסר ${totalMissing}` },
+            { label:'חריגים',
+              val: totals.length===0||totals.every(s=>s.personnel===0) ? 0 : totalInc===0?100:Math.max(0,100-totalInc*15),
+              color: totals.length===0||totals.every(s=>s.personnel===0) ? 'bg-border2' : totalInc===0?'bg-green-500':totalInc<=2?'bg-orange-500':'bg-red-500',
+              icon:'🆘',
+              text: totals.length===0||totals.every(s=>s.personnel===0) ? 'אין נתונים' : totalInc===0?'נקי':`${totalInc} פתוחים` },
           ].map(item => (
             <div key={item.label} className="space-y-1.5">
               <div className="flex justify-between text-xs">

@@ -153,18 +153,18 @@ function PersonnelTab() {
           const postName = posts.find(x=>x.id===p.post_id)?.name
           return (
             <div key={p.id}
-              className={`card px-4 py-3 flex items-center gap-3 ${p.status==='unavailable'?'opacity-50':''}`}>
+              className={`card px-3 py-2.5 flex flex-wrap items-center gap-2 ${p.status==='unavailable'?'opacity-50':''}`}>
               {/* שם */}
-              <div className="flex-1 min-w-0">
-                <span className="font-bold text-sm">{p.name}</span>
-                <span className="text-text3 text-xs mr-2">{p.role}</span>
-                {canManageMultiple && p.unit_id !== currentUnit.id && (
-                  <span className="text-text3 text-xs">· {unitLabel(p.unit_id)}</span>
-                )}
+              <div className="min-w-0" style={{flexBasis:'40%',flexGrow:1}}>
+                <div className="font-bold text-sm truncate">{p.name}</div>
+                <div className="text-text3 text-xs truncate">
+                  {p.role}
+                  {canManageMultiple && p.unit_id !== currentUnit.id && ` · ${unitLabel(p.unit_id)}`}
+                </div>
               </div>
 
               {/* עמדה */}
-              <select className="form-input text-xs py-1 w-36 flex-shrink-0"
+              <select className="form-input text-xs py-1 flex-shrink-0" style={{width:'9rem',maxWidth:'100%'}}
                 value={p.post_id||''}
                 onChange={e=>assignPost(p.id,e.target.value)}>
                 <option value="">ללא עמדה</option>
@@ -177,7 +177,7 @@ function PersonnelTab() {
               </span>
 
               {/* סטטוס — אייקונים */}
-              <div className="flex gap-0.5 flex-shrink-0">
+              <div className="flex gap-0.5 flex-shrink-0 ml-auto">
                 {Object.entries(STATUS_ICON).map(([k,icon]) => (
                   <button key={k} title={STATUS_LABEL[k]} onClick={()=>setStatus(p.id,k)}
                     className={`text-sm px-0.5 transition-all leading-none

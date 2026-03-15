@@ -23,8 +23,8 @@ const DEFAULT_COORDS = {
   pikud:        [31.76, 35.21],
 }
 
-const HEALTH_COLOR = { green: '#22c55e', orange: '#f97316', red: '#ef4444' }
-const HEALTH_LABEL = { green: 'תקין ✓', orange: 'דורש תשומת לב', red: '⚠ קריטי' }
+const HEALTH_COLOR = { green: '#22c55e', orange: '#f97316', red: '#ef4444', gray: '#6b7280' }
+const HEALTH_LABEL = { green: 'תקין ✓', orange: 'דורש תשומת לב', red: '⚠ קריטי', gray: 'אין נתונים' }
 const PIN_COLORS   = { blue:'#3b82f6', red:'#ef4444', yellow:'#eab308', purple:'#a855f7', white:'#e5e7eb', green:'#22c55e', orange:'#f97316' }
 const PIN_TYPES = [
   { value:'general',   label:'📍 כללי',          color:'blue'   },
