@@ -15,11 +15,11 @@ import UnitManagePage from './UnitManagePage'
 import ChatPage from './ChatPage'
 
 const BOTTOM_NAV = [
-  { id: 'dashboard', label: 'ראשי',    icon: '🏠' },
-  { id: 'equipment', label: 'ציוד',    icon: '📦' },
-  { id: 'chat',      label: "צ'אט",    icon: '💬' },
-  { id: 'qna',       label: 'שו"ת',    icon: '⚖️' },
-  { id: 'personnel', label: 'כוח אדם', icon: '👥' },
+  { id: 'dashboard', label: 'ראשי',       icon: '🏠' },
+  { id: 'personnel', label: 'כוח אדם',    icon: '👥' },
+  { id: 'training',  label: 'הכשרה',      icon: '🎓' },
+  { id: 'qna',       label: 'שו״ת הלכתי', icon: '⚖️' },
+  { id: 'chat',      label: 'צ׳אט',       icon: '💬' },
 ]
 
 const FULL_NAV = [
