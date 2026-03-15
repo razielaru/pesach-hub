@@ -7,7 +7,11 @@ import Modal, { ModalButtons } from '../components/ui/Modal'
 const POST_TYPES = ['מפח״ט', 'מפג״ד', 'פלוגה', 'פילבוקס/הגנ״ש', 'ויקווק', 'מטבח', 'מטבחון', 'מחסן חמץ', 'כללי']
 
 export default function TrainingPage() {
-  const { currentUnit, showToast } = useStore()
+  const { currentUnit, showToast, isAdmin, isSenior } = useStore()
+  
+  // ── בדיקת הרשאות: מנהלים, או מי שהזין PIN נכון בשער ההזדהות ──
+  const canEdit = isAdmin || isSenior || sessionStorage.getItem('canEdit') === 'true'
+
   const [people, setPeople] = useState([])
   const [posts,  setPosts]  = useState([])
   const [expanded, setExpanded] = useState({})
@@ -137,16 +141,19 @@ export default function TrainingPage() {
       <div key={post.id} className={`card border ${isChild ? 'border-l-4 border-l-gold/50 bg-bg1/50 my-2 mr-6' : 'border-border1 mb-4'} overflow-hidden`}>
         <div className="bg-bg3 px-4 py-3 flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-3">
-            {/* החץ מופיע תמיד עכשיו! */}
             <button onClick={() => toggleExpand(post.id)} className="w-6 h-6 flex items-center justify-center bg-bg2 rounded text-text2 hover:text-gold transition-colors">
               {isExpanded ? '▼' : '◀'}
             </button>
             
             <span className="font-black text-lg">{post.name}</span>
             <span className="badge badge-dim text-xs">{post.type}</span>
-            <button onClick={() => openEditPost(post)} className="text-text3 hover:text-gold transition-colors p-1" title="ערוך מקום ושיוך">
-              ⚙️
-            </button>
+            
+            {/* רק מנהל יכול לערוך מקום */}
+            {canEdit && (
+              <button onClick={() => openEditPost(post)} className="text-text3 hover:text-gold transition-colors p-1" title="ערוך מקום ושיוך">
+                ⚙️
+              </button>
+            )}
           </div>
           <KasheringButtons post={post} />
         </div>
@@ -156,19 +163,25 @@ export default function TrainingPage() {
             <div className="bg-bg2/50 rounded-xl p-3 border border-border1 border-dashed">
               <div className="text-xs text-text3 font-bold mb-2 flex justify-between">
                 <span>צוות הכשרה משובץ:</span>
-                <select className="bg-transparent border-none text-gold outline-none text-xs cursor-pointer" onChange={e => setPostAssign(e.target.value, post.id)} value="">
-                  <option value="" disabled>+ צרף איש צוות...</option>
-                  {people.filter(p => p.post_id !== post.id).map(p => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
-                  ))}
-                </select>
+                {/* רק מנהל יכול לצרף איש צוות חדש למקום */}
+                {canEdit && (
+                  <select className="bg-transparent border-none text-gold outline-none text-xs cursor-pointer" onChange={e => setPostAssign(e.target.value, post.id)} value="">
+                    <option value="" disabled>+ צרף איש צוות...</option>
+                    {people.filter(p => p.post_id !== post.id).map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 {assignedPeople.length === 0 && <span className="text-xs text-text3">לא שובץ צוות.</span>}
                 {assignedPeople.map(p => (
                   <div key={p.id} className="flex items-center gap-1 bg-bg3 border border-border2 px-2 py-1 rounded text-xs">
                     <span>{p.name}</span>
-                    <button onClick={() => setPostAssign(p.id, null)} className="text-red-400 hover:text-red-300 ml-2">✕</button>
+                    {/* רק מנהל יכול להסיר איש צוות מהמקום */}
+                    {canEdit && (
+                      <button onClick={() => setPostAssign(p.id, null)} className="text-red-400 hover:text-red-300 ml-2">✕</button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -193,9 +206,12 @@ export default function TrainingPage() {
           <h2 className="text-xl font-black">🎓 הכשרת מקומות ושיבוץ צוותים</h2>
           <p className="text-text3 text-sm">הגדר מקומות (מפח"ט, פלוגה, מטבח), עדכן את הסטטוס שלהם ושבץ חיילים.</p>
         </div>
-        <button onClick={openAddPost} className="btn btn-blue bg-blue-900/40 border-blue-500/50 text-blue-300">
-          ➕ הוסף מקום חדש
-        </button>
+        {/* רק מנהל יכול להוסיף מקום */}
+        {canEdit && (
+          <button onClick={openAddPost} className="btn btn-blue bg-blue-900/40 border-blue-500/50 text-blue-300">
+            ➕ הוסף מקום חדש
+          </button>
+        )}
       </div>
 
       <div className="card p-5 flex items-center gap-6">
@@ -211,7 +227,7 @@ export default function TrainingPage() {
       </div>
 
       <div className="space-y-4">
-        {rootPosts.length === 0 && <div className="text-center text-text3 py-10">אין מקומות מוגדרים. לחץ על "הוסף מקום חדש".</div>}
+        {rootPosts.length === 0 && <div className="text-center text-text3 py-10">אין מקומות מוגדרים.</div>}
         {rootPosts.map(post => renderPost(post))}
       </div>
 
