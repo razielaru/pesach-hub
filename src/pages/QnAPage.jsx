@@ -75,6 +75,14 @@ export default function QnAPage() {
     setAnswerModal(null); setAnswerText(''); load()
   }
 
+  // ─── הפונקציה שחתכתי בטעות והוחזרה למקומה! ───
+  async function deleteQuestion(id) {
+    if (!confirm('האם אתה בטוח שברצונך למחוק שאלה זו?')) return
+    await supabase.from('qna').delete().eq('id', id)
+    showToast('השאלה נמחקה 🗑️', 'orange')
+    load()
+  }
+
   const myPending = questions.filter(q => !q.answer)
   const myAnswered = questions.filter(q => q.answer)
 
@@ -104,7 +112,6 @@ export default function QnAPage() {
       const decoder = new TextDecoder('utf-8')
       let aiReply = ''
 
-      // לולאת הקריאה התקנית (ללא Json Parsing שישבור את הזרם)
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -124,7 +131,7 @@ export default function QnAPage() {
                 return updated
               })
               aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-            } catch(e) {} // מתעלמים משורות חלקיות שנחתכו
+            } catch(e) {} 
           }
         }
       }
