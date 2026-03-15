@@ -16,7 +16,12 @@ export default async function handler(req, res) {
   );
 
   try {
-    const { unit_id, title, body } = req.body;
+    // Vercel לא מפרסר JSON אוטומטית — חייבים לעשות זאת ידנית
+    let parsedBody = req.body
+    if (typeof req.body === 'string') {
+      parsedBody = JSON.parse(req.body)
+    }
+    const { unit_id, title, body } = parsedBody;
 
     // משיכת רשימת הטלפונים (המנויים) של היחידה הרלוונטית
     let query = supabase.from('push_subscriptions').select('subscription');
