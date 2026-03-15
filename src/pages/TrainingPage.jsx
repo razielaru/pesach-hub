@@ -10,7 +10,7 @@ export default function TrainingPage() {
   const { currentUnit, showToast } = useStore()
   const [people, setPeople] = useState([])
   const [posts,  setPosts]  = useState([])
-  const [expanded, setExpanded] = useState({}) // לכיווץ ופתיחת רשימות
+  const [expanded, setExpanded] = useState({})
   
   const [postModal, setPostModal] = useState(false)
   const [postForm, setPostForm] = useState({ name: '', type: 'מפח״ט', parent_id: '', unitId: '' })
@@ -43,7 +43,6 @@ export default function TrainingPage() {
     } catch { setPeople([]); setPosts([]) }
   }
 
-  // ── עדכון סטטוס הכשרה של *מקום* (ולא אדם) ──
   async function setKasheringStatus(postId, status) {
     const { error } = await supabase.from('unit_posts').update({ status }).eq('id', postId)
     if (error) showToast('שגיאה בעדכון', 'red')
@@ -53,13 +52,11 @@ export default function TrainingPage() {
     }
   }
 
-  // ── שיוך אדם למקום ──
   async function setPostAssign(personId, postId) {
     await supabase.from('personnel').update({ post_id: postId || null }).eq('id', personId)
     load()
   }
 
-  // ── ניהול מקומות ──
   async function savePost() {
     if (!postForm.name) return
     const targetUnit = postForm.unitId || currentUnit.id
@@ -100,15 +97,13 @@ export default function TrainingPage() {
     )
   }
 
-  // פונקציה שמציירת שורת מקום (אבא או בן)
   function renderPost(post, isChild = false) {
     const children = posts.filter(p => p.parent_id === post.id)
-    const isExpanded = expanded[post.id] !== false // ברירת מחדל: פתוח
+    const isExpanded = expanded[post.id] !== false
     const assignedPeople = people.filter(p => p.post_id === post.id)
 
     return (
       <div key={post.id} className={`card border ${isChild ? 'border-l-4 border-l-gold/50 bg-bg1/50 my-2 mr-6' : 'border-border1 mb-4'} overflow-hidden`}>
-        {/* כותרת המקום */}
         <div className="bg-bg3 px-4 py-3 flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-3">
             {children.length > 0 && (
@@ -122,10 +117,8 @@ export default function TrainingPage() {
           <KasheringButtons post={post} />
         </div>
 
-        {/* תוכן המקום (אם פתוח או אין ילדים) */}
         {isExpanded && (
           <div className="p-3 space-y-3">
-            {/* אנשים שמשובצים למקום הזה */}
             <div className="bg-bg2/50 rounded-xl p-3 border border-border1 border-dashed">
               <div className="text-xs text-text3 font-bold mb-2 flex justify-between">
                 <span>צוות הכשרה משובץ:</span>
@@ -147,7 +140,6 @@ export default function TrainingPage() {
               </div>
             </div>
 
-            {/* תתי-מקומות */}
             {children.length > 0 && (
               <div className="mt-4">
                 <div className="text-xs text-text3 font-bold mb-2">תתי-מקומות:</div>
@@ -184,13 +176,11 @@ export default function TrainingPage() {
         </div>
       </div>
 
-      {/* ── רינדור ההיררכיה ── */}
       <div className="space-y-4">
         {rootPosts.length === 0 && <div className="text-center text-text3 py-10">אין מקומות מוגדרים. לחץ על "ניהול מקומות".</div>}
         {rootPosts.map(post => renderPost(post))}
       </div>
 
-      {/* חלון ניהול מקומות */}
       <Modal open={postModal} onClose={() => setPostModal(false)} title="⚙ ניהול היררכיית מקומות">
         <div className="space-y-4">
           <div className="border border-border1 rounded-xl p-4 bg-bg3/50 space-y-3">
