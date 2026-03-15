@@ -101,9 +101,28 @@ export default function AppShell() {
     tick(); const t = setInterval(tick, 1000); return () => clearInterval(t)
   }, [])
 
+  // ── מנגנון המבזקים עם Push Notifications ──
   useEffect(() => {
+    // 1. בקשת הרשאה מהדפדפן לשלוח התראות
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
     loadAlerts()
-    const sub = supabase.channel('alerts_rt').on('postgres_changes', { event: '*', schema: 'public', table: 'broadcast_alerts' }, loadAlerts).subscribe()
+    
+    const sub = supabase.channel('alerts_rt').on('postgres_changes', { event: '*', schema: 'public', table: 'broadcast_alerts' }, (payload) => {
+      loadAlerts() // תמיד לרענן את רשימת המבזקים באפליקציה
+
+      // 2. אם זה מבזק חדש שנכנס עכשיו, נקפיץ התראה (פוש) למכשיר
+      if (payload.eventType === 'INSERT' && payload.new.is_active) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('📢 מבזק חמ"ל חדש!', {
+            body: payload.new.message,
+          });
+        }
+      }
+    }).subscribe()
+    
     return () => supabase.removeChannel(sub)
   }, [])
 
