@@ -22,8 +22,11 @@ export default function Dashboard() {
     if (!currentUnit) return
     loadStats()
     if (!LOGO_CACHE[currentUnit.id]) loadLogo()
-    const ch = supabase.channel('incidents_dash')
-      .on('postgres_changes', { event:'INSERT', schema:'public', table:'incidents' }, () => loadStats())
+    const ch = supabase.channel('dashboard_rt_' + currentUnit.id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'incidents' },   () => loadStats())
+      .on('postgres_changes', { event:'*', schema:'public', table:'personnel' },   () => loadStats())
+      .on('postgres_changes', { event:'*', schema:'public', table:'equipment' },   () => loadStats())
+      .on('postgres_changes', { event:'*', schema:'public', table:'cleaning_areas' }, () => loadStats())
       .subscribe()
     return () => supabase.removeChannel(ch)
   }, [currentUnit])
