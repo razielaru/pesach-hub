@@ -1,6 +1,5 @@
 import { HALACHA_DB } from './knowledge.js';
 
-// מאריך את זמן הריצה ב-Vercel
 export const maxDuration = 300; 
 export const config = { runtime: 'edge' };
 
@@ -15,9 +14,8 @@ export default async function handler(req) {
   try {
     const { messages, systemPrompt } = await req.json();
 
-    const system = `${systemPrompt}\n\n=== ספר ההכשרות הצבאי (פסח תשפ"ו) ===\n${HALACHA_DB}\n=== סוף הספר ===\n\nהנחיות: ענה בעברית קצרה וברורה. התבסס אך ורק על הספר המצורף. אם צריך אישור חריג, ציין זאת. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
+    const system = `${systemPrompt}\n\n=== ספר ההכשרות הצבאי ===\n${HALACHA_DB}\n=== סוף הספר ===\n\nהנחיות: ענה בעברית קצרה וברורה. התבסס אך ורק על הספר המצורף. אם צריך אישור חריג, ציין זאת. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
 
-    // מודל הפלאש הכי מתקדם ומהיר שזמין כרגע!
     const targetModel = "gemini-2.0-flash";
 
     const res = await fetch(
@@ -31,25 +29,25 @@ export default async function handler(req) {
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }]
           })),
-          // פתחנו לו את הברז שיוכל לענות תשובות ארוכות בלי להיתקע
-          generationConfig: { temperature: 0.1, maxOutputTokens: 3000 } 
+          generationConfig: { temperature: 0.1, maxOutputTokens: 3000 }
         })
       }
     );
 
     if (!res.ok) {
       const err = await res.text();
-      return new Response(JSON.stringify({ error: err }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: err }), { status: 500 });
     }
 
-    // מעביר streaming ישירות ללקוח עם הוראה מפורשת ל-Vercel לשמור על חיבור רציף
-    return new Response(res.body, {
+    // הפתרון לשגיאת ה-Locked Stream! שימוש ב-TransformStream תקני
+    const { readable, writable } = new TransformStream();
+    res.body.pipeTo(writable);
+
+    return new Response(readable, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
       }
     });
 
