@@ -1,4 +1,7 @@
 import { HALACHA_DB } from './knowledge.js';
+
+// מאריך את זמן הריצה ב-Vercel
+export const maxDuration = 300; 
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
@@ -12,11 +15,10 @@ export default async function handler(req) {
   try {
     const { messages, systemPrompt } = await req.json();
 
-    // 1. הסרנו את ה-slice! עכשיו הוא קורא את כל 131 העמודים.
     const system = `${systemPrompt}\n\n=== ספר ההכשרות הצבאי (פסח תשפ"ו) ===\n${HALACHA_DB}\n=== סוף הספר ===\n\nהנחיות: ענה בעברית קצרה וברורה. התבסס אך ורק על הספר המצורף. אם צריך אישור חריג, ציין זאת. בסוף כל תשובה: "בכל ספק — פנה לרב היחידה."`;
 
-    // 2. שמנו את המודל החכם והמדויק ביותר (שזמין לך בחשבון)
-    const targetModel = "gemini-2.5-pro";
+    // מודל הפלאש הכי מתקדם ומהיר שזמין כרגע!
+    const targetModel = "gemini-2.0-flash";
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
@@ -29,7 +31,8 @@ export default async function handler(req) {
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }]
           })),
-          generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
+          // פתחנו לו את הברז שיוכל לענות תשובות ארוכות בלי להיתקע
+          generationConfig: { temperature: 0.1, maxOutputTokens: 3000 } 
         })
       }
     );
@@ -40,11 +43,12 @@ export default async function handler(req) {
         { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // מעביר streaming ישירות לclient
+    // מעביר streaming ישירות ללקוח עם הוראה מפורשת ל-Vercel לשמור על חיבור רציף
     return new Response(res.body, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
       }
     });
