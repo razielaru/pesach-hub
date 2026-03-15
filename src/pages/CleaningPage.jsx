@@ -74,8 +74,10 @@ export default function CleaningPage() {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
-  const cleanCount = areas.filter(a => a.status === 'clean').length
-  const total = areas.length
+  // ── החישוב המתוקן: סופרים רק יעדים ששייכים למקומות החוקיים שמוצגים עכשיו ──
+  const validAreas = areas.filter(a => posts.some(p => p.id === a.post_id))
+  const cleanCount = validAreas.filter(a => a.status === 'clean').length
+  const total = validAreas.length
   const pct = total ? Math.round((cleanCount / total) * 100) : 0
 
   return (
