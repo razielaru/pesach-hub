@@ -143,7 +143,7 @@ export default function MapView({ unitStats }) {
       const coords = DEFAULT_COORDS[u.id]
       if (!coords) return
       const s = unitStats[u.id] || {}
-      const h = s.health || 'orange'
+      const h = s.health || (Object.keys(s).length === 0 ? 'gray' : 'orange')
       const color = HEALTH_COLOR[h]
       const shortName = u.name.replace('חטמ"ר ','').replace('חטיבה ','חט ').replace('אוגדת ','אוג ')
 
@@ -225,7 +225,18 @@ export default function MapView({ unitStats }) {
       }
     })
 
-    if (points.length === 0) return
+    if (points.length === 0) {
+      // הצג הודעה קטנה על המפה שאין נתוני בעיות
+      const noDataDiv = window.L.divIcon({
+        className: '',
+        html: '<div style="background:rgba(0,0,0,0.7);color:#888;padding:6px 12px;border-radius:8px;font-size:12px;white-space:nowrap">אין בעיות לתצוגת heat map</div>',
+        iconSize: [200, 30]
+      })
+      const m = window.L.marker([31.9, 35.15], { icon: noDataDiv }).addTo(heatGroup)
+      heatGroup.addTo(mapInstance.current)
+      heatLayerRef.current = heatGroup
+      return
+    }
 
     // Leaflet heat בסיסי — ריבועים צבעוניים כ-fallback (אין leaflet.heat ב-CDN)
     const heatGroup = window.L.layerGroup()
@@ -252,7 +263,7 @@ export default function MapView({ unitStats }) {
       {/* Toolbar */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-4 flex-wrap text-xs text-text3">
-          {[['bg-green-500','תקין'],['bg-orange-500','דורש תשומת לב'],['bg-red-500','קריטי']].map(([c,l])=>(
+          {[['bg-green-500','תקין'],['bg-orange-500','דורש תשומת לב'],['bg-red-500','קריטי'],['bg-gray-500','אין נתונים']].map(([c,l])=>(
             <div key={l} className="flex items-center gap-1.5"><div className={`w-3 h-3 rounded-full ${c}`}/><span>{l}</span></div>
           ))}
           <div className="flex items-center gap-1.5 text-blue-400"><span>📍</span><span>נקודה מותאמת</span></div>

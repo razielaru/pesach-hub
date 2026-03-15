@@ -20,7 +20,7 @@ function PersonnelTab() {
   const [modal,  setModal]        = useState(false)
   const [postModal, setPostModal] = useState(false)
   const [postForm, setPostForm]   = useState({ name:'', required:1, unitId:'' })
-  const [form,   setForm]         = useState({ name:'', role:'סגל', status:'available', training_status:'none', post_id:'' })
+  const [form,   setForm]         = useState({ name:'', role:'סגל', status:'available', training_status:'none', post_id:'', targetUnit:'' })
   const [search, setSearch]       = useState('')
 
   const leafUnits = getLeafUnits(currentUnit.id)
@@ -53,11 +53,17 @@ function PersonnelTab() {
 
   async function save() {
     if (!form.name) return
-    // לפיקוד/אוגדה — האדם נשמר תחת היחידה שהעמדה שייכת אליה, או currentUnit
     let targetUnitId = currentUnit.id
-    if (form.post_id) {
-      const post = posts.find(p => p.id === form.post_id)
-      if (post) targetUnitId = post.unit_id
+    // לפיקוד/אוגדה — חייבים יחידה יעד
+    if (canManageMultiple) {
+      if (form.post_id) {
+        const post = posts.find(p => p.id === form.post_id)
+        if (post) targetUnitId = post.unit_id
+      } else if (form.targetUnit) {
+        targetUnitId = form.targetUnit
+      } else {
+        alert('בחר יחידה יעד לאיש הצוות'); return
+      }
     }
     await supabase.from('personnel').insert({
       unit_id: targetUnitId,
@@ -67,7 +73,7 @@ function PersonnelTab() {
     })
     showToast(`${form.name} נוסף ✅`, 'green')
     setModal(false)
-    setForm({ name:'', role:'סגל', status:'available', training_status:'none', post_id:'' })
+    setForm({ name:'', role:'סגל', status:'available', training_status:'none', post_id:'', targetUnit:'' })
     load()
   }
 
@@ -235,16 +241,24 @@ function PersonnelTab() {
               <option value="done">הוכשר</option>
             </select>
           </div>
-          {posts.length > 0 && (
+          {canManageMultiple && (
+            <div className="col-span-2">
+              <label className="text-xs text-text3 font-bold block mb-1">⚠ יחידה יעד *</label>
+              <select className="form-input" value={form.targetUnit}
+                onChange={e=>setForm(f=>({...f,targetUnit:e.target.value,post_id:''}))}>
+                <option value="">בחר יחידה...</option>
+                {leafUnits.map(u=><option key={u.id} value={u.id}>{u.icon} {u.name}</option>)}
+              </select>
+            </div>
+          )}
+          {posts.filter(p=>!canManageMultiple||p.unit_id===form.targetUnit).length > 0 && (
             <div>
               <label className="text-xs text-text3 font-bold block mb-1">שיוך לעמדה</label>
               <select className="form-input" value={form.post_id}
                 onChange={e=>setForm(f=>({...f,post_id:e.target.value}))}>
                 <option value="">ללא עמדה</option>
-                {posts.map(p=>(
-                  <option key={p.id} value={p.id}>
-                    {p.name}{canManageMultiple ? ` (${unitLabel(p.unit_id)})` : ''}
-                  </option>
+                {posts.filter(p=>!canManageMultiple||p.unit_id===form.targetUnit).map(p=>(
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
             </div>

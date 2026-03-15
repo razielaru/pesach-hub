@@ -200,8 +200,8 @@ export default function Dashboard() {
         {[
           { icon:'🕐', label:'ימים לפסח', val: days, valCls: days<=7?'text-red-400':days<=14?'text-orange-400':'text-gold' },
           { icon:'📊', label:'מוכנות', val:`${readinessDisplay}`, valCls: readinessColor },
-          { icon:'👥', label:'מוכשרים', val:`${stats.total?Math.round(stats.trained/stats.total*100):0}%`, valCls:'text-green-400' },
-          { icon:'🧹', label:'ניקיון', val:`${stats.cleanPct}%`, valCls: stats.cleanPct>=70?'text-green-400':stats.cleanPct>=40?'text-orange-400':'text-red-400' },
+          { icon:'👥', label:'כוח אדם', val: stats.total, valCls: stats.total>0?'text-blue-400':'text-text3' },
+          { icon:'🎓', label:'הכשרה', val:`${stats.total?Math.round(stats.trained/stats.total*100):0}%`, valCls: stats.total&&stats.trained/stats.total>=0.7?'text-green-400':stats.total?'text-orange-400':'text-text3' },
           { icon:'📦', label:'ציוד חסר', val: stats.missingEquip, valCls: stats.missingEquip===0?'text-green-400':'text-red-400' },
           { icon:'🆘', label:'חריגים', val: incidents.length, valCls: incidents.length===0?'text-green-400':'text-red-400 animate-pulse' },
         ].map(item=>(
@@ -249,11 +249,11 @@ export default function Dashboard() {
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard label="הכשרה הושלמה" value={stats.trained} sub={`מתוך ${stats.total}`} color="green"/>
+        <KpiCard label="כוח אדם" value={stats.total} sub="אנשים" color="blue"/>
         <KpiCard label="בהכשרה" value={stats.active} color="orange"/>
         <KpiCard label="כוח אדם זמין" value={stats.available} sub={`מתוך ${stats.total}`} color="blue"/>
         <KpiCard label="ציוד חסר" value={stats.missingEquip} sub="פריטים" color="red"/>
-        <KpiCard label="ניקיון" value={`${stats.cleanPct}%`} color="gold"/>
+        <KpiCard label="הכשרה" value={`${stats.total?Math.round(stats.trained/stats.total*100):0}%`} sub={`${stats.trained} מתוך ${stats.total}`} color="green"/>
       </div>
 
       {/* ── Tasks + Progress ── */}
@@ -279,12 +279,13 @@ export default function Dashboard() {
           <div className="panel-head"><span className="panel-title">📊 פירוט מוכנות</span></div>
           <div className="p-5 space-y-4">
             {[
-              { label:'הכשרות',
+              { label:'כוח אדם',
+                val: stats.total > 0 ? Math.round(stats.available/stats.total*100) : 0,
+                color: stats.total>0 ? 'bg-blue-500' : 'bg-border2',
+                text: stats.total===0 ? 'אין נתונים' : `${stats.available}/${stats.total}` },
+              { label:'הכשרה',
                 val: stats.total ? Math.round(stats.trained/stats.total*100) : 0,
                 color: stats.total ? (stats.trained/stats.total>=0.7?'bg-green-500':'bg-orange-500') : 'bg-border2' },
-              { label:'ניקיון',
-                val: stats.cleanPct,
-                color: stats.cleanPct>=70?'bg-green-500':stats.cleanPct>=40?'bg-orange-500':stats.cleanPct>0?'bg-red-500':'bg-border2' },
               // ציוד: 0% כשאין ציוד כלל, 100% רק אם יש ציוד ואין חסרים
               { label:'ציוד',
                 val: noData ? 0 : stats.missingEquip===0 && stats.total===0 ? 0 : stats.missingEquip===0 ? 100 : Math.max(5, 100-stats.missingEquip*15),
