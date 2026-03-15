@@ -7,6 +7,7 @@ import KpiCard from '../components/ui/KpiCard'
 import BriefingMode, { useSmartAlerts } from './BriefingMode'
 import MapView from './MapView'
 import DutyOfficerAI from './DutyOfficerAI'
+import PushSetup from '../components/PushSetup'
 
 export default function CommandPage() {
   const { currentUnit, activePage, showToast } = useStore()
@@ -20,7 +21,6 @@ export default function CommandPage() {
   const [dispForm, setDispForm] = useState({ unit:'', item:'', qty:1, note:'' })
   const [dispLog, setDispLog] = useState([])
   
-  // מנגנון אישור התראות קריטיות
   const [alertsAcknowledged, setAlertsAcknowledged] = useState(false)
 
   const nonAdminUnits = getLeafUnits(currentUnit?.id || '')
@@ -44,45 +44,52 @@ export default function CommandPage() {
     const unitIds = nonAdminUnits.map(u => u.id)
     if (unitIds.length === 0) { setLoading(false); return }
 
-    const [persRes, equipRes, areasRes, incRes, dlRes] = await Promise.all([
-      supabase.from('personnel').select('*').in('unit_id', unitIds),
-      supabase.from('equipment').select('*').in('unit_id', unitIds),
-      supabase.from('cleaning_areas').select('*').in('unit_id', unitIds),
-      supabase.from('incidents').select('*').eq('status','open').in('unit_id', unitIds),
-      supabase.from('dispatch_log').select('*').order('created_at',{ascending:false}).limit(20),
-    ])
+    try {
+      const [persRes, equipRes, areasRes, incRes, dlRes] = await Promise.all([
+        supabase.from('personnel').select('id, unit_id, status, training_status').in('unit_id', unitIds),
+        supabase.from('equipment').select('id, unit_id, have, need').in('unit_id', unitIds),
+        supabase.from('cleaning_areas').select('id, unit_id, status').in('unit_id', unitIds),
+        supabase.from('incidents').select('id, unit_id, status, title').eq('status','open').in('unit_id', unitIds),
+        supabase.from('dispatch_log').select('id, unit_id, item_name, quantity, created_at').order('created_at',{ascending:false}).limit(20),
+      ])
 
-    const pers  = persRes.data  || []
-    const equip = equipRes.data || []
-    const areas = areasRes.data || []
-    const incs  = incRes.data   || []
+      const pers  = persRes?.data  || []
+      const equip = equipRes?.data || []
+      const areas = areasRes?.data || []
+      const incs  = incRes?.data   || []
 
-    const stats = {}
-    nonAdminUnits.forEach(u => {
-      const p = pers.filter(x => x.unit_id === u.id)
-      const e = equip.filter(x => x.unit_id === u.id)
-      const a = areas.filter(x => x.unit_id === u.id)
-      
-      const trainedPct = p.length ? Math.round(p.filter(x=>x.training_status==='done').length/p.length*100) : 0
-      const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
-      
-      const missingEquip = e.filter(x=>x.have<x.need).length
-      const totalNeed = e.reduce((sum, x) => sum + (x.need || 0), 0)
-      const totalHave = e.reduce((sum, x) => sum + Math.min(x.have || 0, x.need || 0), 0)
-      const equipPct = totalNeed > 0 ? Math.round((totalHave / totalNeed) * 100) : 0
-
-      const openInc = incs.filter(x => x.unit_id === u.id).length
-      
-      const health = p.length === 0 ? 'gray'
-        : openInc>0 || trainedPct<50 || (totalNeed>0 && equipPct<40) ? 'red' 
-        : trainedPct<80 || (totalNeed>0 && equipPct<80) ? 'orange'
-        : 'green'
+      const stats = {}
+      nonAdminUnits.forEach(u => {
+        const p = pers.filter(x => x.unit_id === u.id)
+        const e = equip.filter(x => x.unit_id === u.id)
+        const a = areas.filter(x => x.unit_id === u.id)
         
-      stats[u.id] = { trainedPct, equipPct, missingEquip, cleanPct, openInc, health, personnel: p.length }
-    })
-    setUnitStats(stats)
-    setDispLog(dlRes.data || [])
-    setLoading(false)
+        const trainedPct = p.length ? Math.round(p.filter(x=>x.training_status==='done').length/p.length*100) : 0
+        const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
+        
+        const missingEquip = e.filter(x=>x.have<x.need).length
+        const totalNeed = e.reduce((sum, x) => sum + (x.need || 0), 0)
+        const totalHave = e.reduce((sum, x) => sum + Math.min(x.have || 0, x.need || 0), 0)
+        const equipPct = totalNeed > 0 ? Math.round((totalHave / totalNeed) * 100) : 0
+
+        const openInc = incs.filter(x => x.unit_id === u.id).length
+        
+        const health = p.length === 0 ? 'gray'
+          : openInc>0 || trainedPct<50 || (totalNeed>0 && equipPct<40) ? 'red' 
+          : trainedPct<80 || (totalNeed>0 && equipPct<80) ? 'orange'
+          : 'green'
+          
+        stats[u.id] = { trainedPct, equipPct, missingEquip, cleanPct, openInc, health, personnel: p.length }
+      })
+      setUnitStats(stats)
+      setDispLog(dlRes?.data || [])
+
+    } catch(err) {
+      console.error(err)
+    } finally {
+      // מבטיח שהאתר לעולם לא ייתקע על מסך טעינה לבן
+      setLoading(false)
+    }
   }
 
   async function sendTask() {
@@ -157,38 +164,35 @@ export default function CommandPage() {
 
   if (loading) return <div className="flex items-center justify-center h-64 text-text3">טוען נתונים...</div>
 
-  // 🛑 חלון הפריצה: מוצג רק אם יש התראות קריטיות ועדיין לא אושר
   const showCriticalPopup = criticalAlerts.length > 0 && !alertsAcknowledged
 
   return (
     <div className="space-y-5">
+      <PushSetup />
       
-      {/* ── חלון התראה חוסם (Popup) ── */}
       {showCriticalPopup && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-bg1 border-2 border-red-500 rounded-2xl w-full max-w-lg p-6 shadow-[0_0_50px_rgba(239,68,68,0.4)] animate-in fade-in zoom-in duration-300">
-            <h2 className="text-2xl font-black text-red-400 mb-2 flex items-center gap-3">
-              <span className="text-4xl animate-pulse">🚨</span>
-              התרעות פיקוד קריטיות!
+        <div className="bg-[#cc0000] rounded-2xl p-5 shadow-[0_4px_20px_rgba(204,0,0,0.4)] border-2 border-red-400 relative overflow-hidden animate-in slide-in-from-top-4">
+          <div className="absolute inset-0 opacity-20 pointer-events-none" style={{backgroundImage: 'repeating-linear-gradient(45deg, #000, #000 10px, transparent 10px, transparent 20px)'}}></div>
+          <div className="relative z-10">
+            <h2 className="text-2xl font-black text-white mb-3 flex items-center gap-3">
+              <span className="text-3xl animate-pulse">🚨</span>
+              התרעת מוכנות קריטית!
             </h2>
-            <p className="text-text2 text-sm mb-5">המערכת זיהתה פערים חמורים ביחידות שתחת פיקודך הדורשים התערבות מיידית:</p>
-            
-            <div className="space-y-3 mb-6 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="bg-black/30 rounded-xl p-4 mb-4 space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
               {criticalAlerts.map(a => (
-                <div key={a.id} className="bg-red-900/20 border border-red-500/30 rounded-xl p-3 flex items-start gap-3">
-                  <span className="text-xl">{a.icon}</span>
+                <div key={a.id} className="text-white flex items-start gap-2">
+                  <span className="text-xl leading-none">{a.icon}</span>
                   <div>
-                    <div className="font-bold text-red-200 text-sm leading-tight">{a.message}</div>
-                    {a.unit && <div className="text-red-400/80 text-xs mt-1">יחידה: {a.unit}</div>}
+                    <div className="font-bold leading-tight">{a.message}</div>
+                    {a.unit && <div className="text-red-200 text-xs mt-1">יחידה: {a.unit}</div>}
                   </div>
                 </div>
               ))}
             </div>
-            
             <button 
               onClick={() => setAlertsAcknowledged(true)} 
-              className="w-full btn bg-red-600 hover:bg-red-500 text-white font-black text-lg py-4 border-none shadow-lg shadow-red-900/50">
-              קראתי ואישרתי, היכנס לחמ"ל
+              className="w-full bg-white text-[#cc0000] hover:bg-gray-100 font-black text-lg py-3 rounded-xl shadow-lg transition-all">
+              קראתי ואישרתי
             </button>
           </div>
         </div>
@@ -241,6 +245,14 @@ export default function CommandPage() {
         
         {((avgEquip > 0 && avgEquip < 40) || (avgTrained > 0 && avgTrained < 50)) && (
           <div className="mt-3 text-red-400 text-xs font-bold">⛔ פקטור חוסם: מדד הפיקוד הוגבל ל-50% עקב פערים קריטיים בהכשרות או בציוד ביחידות.</div>
+        )}
+        
+        {totalInc > 0 && (
+          <div className="mt-3 text-red-400 text-xs font-bold">⚠️ שים לב: קיימים {totalInc} חריגים שפוגעים משמעותית בציון המוכנות.</div>
+        )}
+        
+        {nonAdminUnits.filter(u => !unitStats[u.id] || unitStats[u.id].personnel === 0).length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border1"><span className="text-xs text-orange-400 font-bold">⚠️ יחידות ללא נתונים: </span><span className="text-xs text-text3">{nonAdminUnits.filter(u => !unitStats[u.id] || unitStats[u.id].personnel === 0).map(u=>u.name).join(' · ')}</span></div>
         )}
       </div>
 
