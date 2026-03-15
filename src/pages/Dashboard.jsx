@@ -10,7 +10,7 @@ const LOGO_CACHE = {}
 export default function Dashboard() {
   const { currentUnit, activePage, setPage, isSenior, isAdmin } = useStore()
   
-  const [stats, setStats] = useState({ trained:0, active:0, available:0, missingEquip:0, equipPct:0, cleanPct:0, total:0, equipTotal:0 })
+  const [stats, setStats] = useState({ trained:0, active:0, available:0, missingEquip:0, equipPct:0, cleanPct:0, total:0, equipTotal:0, postCoveragePct:0, totalRequiredPosts:0 })
   const [tasks, setTasks] = useState([])
   const [incidents, setIncidents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -32,6 +32,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event:'*', schema:'public', table:'personnel' },   () => loadStats())
       .on('postgres_changes', { event:'*', schema:'public', table:'equipment' },   () => loadStats())
       .on('postgres_changes', { event:'*', schema:'public', table:'cleaning_areas' }, () => loadStats())
+      .on('postgres_changes', { event:'*', schema:'public', table:'unit_posts' }, () => loadStats())
       .subscribe()
       
     return () => supabase.removeChannel(ch)
@@ -44,9 +45,8 @@ export default function Dashboard() {
       const ids = Array.from(new Set([uid, ...subs.map(u => u.id)]))
       const inF = q => ids.length === 1 ? q.eq('unit_id', ids[0]) : q.in('unit_id', ids)
 
-      // שאילתות צלף: מושכים רק מה שצריך כדי לא לחנוק את השרת
       const [pers, equip, areas, openTasks, openInc, postsRes, lastPers, lastInc, lastClean] = await Promise.all([
-        inF(supabase.from('personnel').select('id, unit_id, status, training_status')),
+        inF(supabase.from('personnel').select('id, unit_id, status, training_status, post_id')),
         inF(supabase.from('equipment').select('id, unit_id, have, need')),
         inF(supabase.from('cleaning_areas').select('id, unit_id, status')),
         inF(supabase.from('tasks').select('id, title, priority, status, assigned_by').neq('status','done').order('created_at',{ascending:false}).limit(4)),
@@ -60,7 +60,7 @@ export default function Dashboard() {
         inF(supabase.from('cleaning_areas').select('unit_id, updated_at').order('updated_at',{ascending:false}).limit(50)),
       ])
 
-      const p = pers?.data || [], e = equip?.data || [], a = areas?.data || []
+      const p = pers?.data || [], e = equip?.data || [], a = areas?.data || [], posts = postsRes?.data || []
       
       const missingEquip = e.filter(x=>x.have<x.need).length
       const totalNeed = e.reduce((sum, x) => sum + (x.need || 0), 0)
@@ -70,11 +70,17 @@ export default function Dashboard() {
       const trained = p.filter(x=>x.training_status==='done').length
       const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
       const openIncCount = openInc?.data?.length || 0
+      
+      // חישוב איוש מקומות (עמדות)
+      const assignedPeople = p.filter(x => x.post_id && x.status !== 'unavailable').length
+      const totalRequiredPosts = posts.reduce((sum, post) => sum + (post.required || 1), 0)
+      const postCoveragePct = totalRequiredPosts > 0 ? Math.round(Math.min(assignedPeople / totalRequiredPosts, 1) * 100) : 0
 
       setStats({
         trained, active: p.filter(x=>x.training_status==='active').length,
         available: p.filter(x=>x.status==='available').length,
-        missingEquip, equipPct, cleanPct, total: p.length, equipTotal: totalNeed
+        missingEquip, equipPct, cleanPct, total: p.length, equipTotal: totalNeed,
+        postCoveragePct, totalRequiredPosts
       })
       setTasks(openTasks?.data || [])
       setIncidents(openInc?.data || [])
@@ -85,9 +91,10 @@ export default function Dashboard() {
       const trainedPct = p.length ? Math.round(trained/p.length*100) : 0
 
       let total = 0, weight = 0
-      if (p.length > 0)  { total += trainedPct * 0.40; weight += 0.40 }
-      if (a.length > 0)  { total += cleanPct   * 0.30; weight += 0.30 }
-      if (totalNeed > 0) { total += equipPct   * 0.30; weight += 0.30 }
+      if (p.length > 0)  { total += trainedPct * 0.35; weight += 0.35 }
+      if (a.length > 0)  { total += cleanPct   * 0.25; weight += 0.25 }
+      if (totalNeed > 0) { total += equipPct   * 0.25; weight += 0.25 }
+      if (totalRequiredPosts > 0) { total += postCoveragePct * 0.15; weight += 0.15 } // מקומות נכנס לשקלול המוכנות!
       
       let r = weight > 0 ? Math.round(total / weight) : 0
       
@@ -120,7 +127,6 @@ export default function Dashboard() {
     } catch(err) {
       console.error('loadStats error:', err)
     } finally {
-      // הבלוק הזה תמיד ירוץ! זה מונע לנצח את המסך טעינה התקוע
       setLoading(false) 
     }
   }
@@ -284,11 +290,12 @@ export default function Dashboard() {
           <div className="p-5 space-y-4">
             {[
               { label:'הכשרה', val: stats.total ? Math.round(stats.trained/stats.total*100) : 0, color: stats.total ? (stats.trained/stats.total>=0.7?'bg-green-500':'bg-orange-500') : 'bg-border2' },
+              { label:'שיבוץ למקומות', val: stats.postCoveragePct, color: stats.totalRequiredPosts===0?'bg-border2':stats.postCoveragePct>=80?'bg-green-500':stats.postCoveragePct>=50?'bg-orange-500':'bg-red-500', text: stats.totalRequiredPosts===0?'אין עמדות':`${stats.postCoveragePct}%` },
               { label:'ניקיון', val: stats.cleanPct, color: stats.cleanPct>=70?'bg-green-500':stats.cleanPct>0?'bg-orange-500':'bg-border2' },
               { label:'ציוד', val: stats.equipPct, color: stats.equipPct>=80?'bg-green-500':stats.equipPct>0?'bg-orange-500':'bg-border2' },
             ].map(item=>(
               <div key={item.label}>
-                <div className="flex justify-between text-xs text-text2 mb-1"><span>{item.label}</span><span className="font-bold">{item.val}%</span></div>
+                <div className="flex justify-between text-xs text-text2 mb-1"><span>{item.label}</span><span className={`font-bold ${item.text?'text-text3':''}`}>{item.text||item.val+'%'}</span></div>
                 <div className="pbar"><div className={`pbar-fill ${item.color}`} style={{width:`${item.val}%`}}/></div>
               </div>
             ))}
