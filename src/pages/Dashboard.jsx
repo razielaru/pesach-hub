@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import KpiCard from '../components/ui/KpiCard'
 import { getLeafUnits, UNITS } from '../lib/units'
+import PushSetup from '../components/PushSetup'
 
 const LOGO_CACHE = {}
 
@@ -154,6 +155,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
+      
+      {/* ── כפתור ההפעלה של ההתראות (Web Push) ── */}
+      <PushSetup />
+      
       <div className="card p-5 bg-gradient-to-l from-[#1a2040] to-bg2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-bg3 border border-border2 flex items-center justify-center overflow-hidden flex-shrink-0">
