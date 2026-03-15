@@ -133,6 +133,17 @@ export default function AppShell() {
   async function sendAlert() {
     if (!newAlertText.trim()) return
     await supabase.from('broadcast_alerts').insert({ message: newAlertText.trim(), sent_by: currentUnit?.name, is_active: true })
+    // שלח Push לכל המכשירים הרשומים
+    try {
+      await fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: '📢 מבזק חמ"ל: ' + currentUnit?.name,
+          body: newAlertText.trim()
+        })
+      })
+    } catch {}
     setNewAlertText(''); setShowAlertInput(false)
   }
   async function deleteAlert(id) {
