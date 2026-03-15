@@ -22,12 +22,23 @@ function PersonnelTab() {
   const [form, setForm]                 = useState({ name:'', role:'סגל', status:'available', targetUnit:'', post_id:'', pin_code:'' })
   const [editForm, setEditForm]         = useState({ name:'', pin_code:'' })
   const [contacts, setContacts]         = useState([])
+  const [contactsLoading, setContactsLoading] = useState(false)
   const [search, setSearch]             = useState('')
+
+  const [contactCounts, setContactCounts] = useState({})
 
   const leafUnits = getLeafUnits(currentUnit.id)
   const canManageMultiple = leafUnits.length > 0
 
-  useEffect(() => { if (currentUnit) load() }, [currentUnit])
+  useEffect(() => { if (currentUnit) { load(); loadContactCounts() } }, [currentUnit])
+
+  async function loadContactCounts() {
+    const { data } = await supabase.from('personnel_contacts').select('personnel_id')
+    if (!data) return
+    const counts = {}
+    data.forEach(r => { counts[r.personnel_id] = (counts[r.personnel_id] || 0) + 1 })
+    setContactCounts(counts)
+  }
 
   async function load() {
     try {
@@ -78,21 +89,30 @@ function PersonnelTab() {
     load()
   }
 
-  function openContacts(p) {
-    try {
-      const arr = p.contacts ? (typeof p.contacts === 'string' ? JSON.parse(p.contacts) : p.contacts) : []
-      setContacts(Array.isArray(arr) ? arr : [])
-    } catch { setContacts([]) }
+  async function openContacts(p) {
     setContactModal(p)
+    setContactsLoading(true)
+    const { data } = await supabase.from('personnel_contacts')
+      .select('*').eq('personnel_id', p.id).order('created_at')
+    setContacts(data || [])
+    setContactsLoading(false)
   }
   async function saveContacts() {
-    await supabase.from('personnel').update({ contacts: JSON.stringify(contacts) }).eq('id', contactModal.id)
+    const pid = contactModal.id
+    // מחק הכל ואז הכנס מחדש
+    await supabase.from('personnel_contacts').delete().eq('personnel_id', pid)
+    const toInsert = contacts.filter(c => c.name.trim()).map(c => ({
+      personnel_id: pid, name: c.name.trim(), phone: c.phone?.trim() || null
+    }))
+    if (toInsert.length > 0) {
+      await supabase.from('personnel_contacts').insert(toInsert)
+    }
     showToast('ביינשים עודכנו ✅', 'green')
     setContactModal(null)
-    load()
+    loadContactCounts()
   }
-  function addContact()         { setContacts(c => [...c, { name:'', phone:'' }]) }
-  function removeContact(i)     { setContacts(c => c.filter((_, j) => j !== i)) }
+  function addContact()           { setContacts(c => [...c, { name:'', phone:'' }]) }
+  function removeContact(i)       { setContacts(c => c.filter((_, j) => j !== i)) }
   function updateContact(i, f, v) { setContacts(c => c.map((x, j) => j === i ? {...x, [f]: v} : x)) }
 
   async function setStatus(id, status) {
@@ -109,13 +129,7 @@ function PersonnelTab() {
     await supabase.from('personnel').delete().eq('id', id); load()
   }
 
-  function contactCount(p) {
-    if (!p.contacts) return 0
-    try {
-      const arr = typeof p.contacts === 'string' ? JSON.parse(p.contacts) : p.contacts
-      return Array.isArray(arr) ? arr.length : 0
-    } catch { return 0 }
-  }
+
 
   const counts = { available:0, zoom:0, away:0, leave:0, unavailable:0 }
   people.forEach(p => { if (counts[p.status] !== undefined) counts[p.status]++ })
@@ -161,7 +175,7 @@ function PersonnelTab() {
                 {canEdit && (
                   <button onClick={() => openContacts(p)}
                     className="text-[10px] px-1.5 py-0.5 rounded border border-border2 text-text3 hover:border-gold/50 hover:text-gold transition-all">
-                    👥 {contactCount(p) > 0 ? `${contactCount(p)} ביינשים` : '+ ביינש'}
+                    👥 {contactCounts[p.id] > 0 ? `${contactCounts[p.id]} ביינשים` : '+ ביינש'}
                   </button>
                 )}
               </div>
@@ -268,7 +282,8 @@ function PersonnelTab() {
       <Modal open={!!contactModal} onClose={() => setContactModal(null)} title={`👥 ביינשים — ${contactModal?.name}`}>
         {contactModal && (
           <div className="space-y-3">
-            {contacts.length === 0 && (
+            {contactsLoading && <div className="text-center text-text3 py-4">טוען...</div>}
+            {!contactsLoading && contacts.length === 0 && (
               <div className="text-center text-text3 text-sm py-3">אין ביינשים עדיין</div>
             )}
             {contacts.map((c, i) => (
