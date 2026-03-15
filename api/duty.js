@@ -27,7 +27,7 @@ ${JSON.stringify(unitData, null, 2)}
 === סוף נתונים ===`;
 
     // עדכון המודל ל-gemini-2.5-flash (המודל המהיר והמעודכן שזמין לך)
-    const targetModel = "gemini-2.5-flash";
+    const targetModel = "gemini-2.5-flash-lite";
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
