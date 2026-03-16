@@ -1,1 +1,5 @@
-
+FILES TO DELETE FROM GITHUB:
+src/pages/AppShell.jsx
+src/pages/MapView.jsx  (pages folder only — keep components/dashboard/MapView.jsx)
+src/pages/CommandPage.jsx
+src/pages/PersonnelPage.jsx
