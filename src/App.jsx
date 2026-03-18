@@ -1,6 +1,5 @@
 // src/App.jsx — FULL routing with all pages connected
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import NewReport from './pages/NewReport'
