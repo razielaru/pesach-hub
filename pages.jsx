@@ -27,7 +27,6 @@ export function CleaningPage() {
     setPosts(postsRes.data || [])
   }
 
-  // סנכרן מקומות → אזורי ניקיון (הוסף מקומות שאין להם עדיין אזור)
   async function syncFromPosts() {
     setSyncing(true)
     const existingNames = areas.map(a => a.name)
@@ -304,8 +303,7 @@ export function TimelinePage() {
   const month = currentMonth.getMonth()
   const firstDay = new Date(year, month, 1)
   const lastDay = new Date(year, month + 1, 0)
-  // Days in grid (pad start to Sunday=0)
-  const startPad = firstDay.getDay() // 0=ראשון, 6=שבת — תואם ל-dayNames ['א׳'...'ש׳']
+  const startPad = firstDay.getDay()
   const totalDays = lastDay.getDate()
   const cells = []
   for (let i = 0; i < startPad; i++) cells.push(null)
@@ -368,7 +366,7 @@ export function TimelinePage() {
               const isToday = day && today.getDate()===day && today.getMonth()===month && today.getFullYear()===year
               return (
                 <div key={i}
-                  className={`min-h-[80px] p-1.5 border-b border-l border-border1/50 relative
+                  className={`min-h-[80px] p-1.5 border-b border-l border-border1/50 relative overflow-hidden
                     ${!day ? 'bg-bg0/50' : 'hover:bg-bg3/50'}
                     ${i % 7 === 0 ? 'border-l-0' : ''}`}>
                   {day && (
@@ -386,10 +384,10 @@ export function TimelinePage() {
                               onClick={() => cycleMs(ms)}
                               title={ms.title}
                               className={`text-[9px] font-bold px-1 py-0.5 rounded cursor-pointer
-                                text-white truncate flex items-center gap-1
+                                text-white break-words whitespace-normal flex items-start gap-1
                                 ${color} ${st==='done'?'opacity-50 line-through':''}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${stDot[st]}`}/>
-                              {ms.title}
+                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-[3px] ${stDot[st]}`}/>
+                              <span>{ms.title}</span>
                             </div>
                           )
                         })}
@@ -516,10 +514,8 @@ export function UnitManagePage() {
   async function load() {
     const { data } = await supabase.from('units').select('*').order('name')
     setUnits(data || [])
-    // טען מנויי Push
     const { data: subs } = await supabase.from('push_subscriptions').select('id,unit_id,created_at').order('created_at',{ascending:false})
     setPushSubs(subs || [])
-    // Load book URL from a settings key
     const { data: setting } = await supabase.from('qna')
       .select('answer').eq('question', '__training_book__').eq('unit_id','pikud').maybeSingle()
     if (setting?.answer) setBookUrl(setting.answer)
@@ -540,7 +536,6 @@ export function UnitManagePage() {
   }
 
   async function uploadLogo(unitId, file) {
-    // דחוס את התמונה ל-200x200 לפני שמירה — מונע base64 ענק
     const img = new Image()
     const url = URL.createObjectURL(file)
     img.onload = async () => {
@@ -548,11 +543,10 @@ export function UnitManagePage() {
       const SIZE = 200
       canvas.width = SIZE; canvas.height = SIZE
       const ctx = canvas.getContext('2d')
-      // חתוך למרובע מרכזי
       const min = Math.min(img.width, img.height)
       const sx = (img.width - min) / 2, sy = (img.height - min) / 2
       ctx.drawImage(img, sx, sy, min, min, 0, 0, SIZE, SIZE)
-      const compressed = canvas.toDataURL('image/jpeg', 0.7) // ~10KB
+      const compressed = canvas.toDataURL('image/jpeg', 0.7)
       URL.revokeObjectURL(url)
       const { error } = await supabase.from('units').update({ logo_url: compressed }).eq('id', unitId)
       if (error) { showToast('שגיאה: ' + error.message, 'red'); return }
@@ -570,7 +564,6 @@ export function UnitManagePage() {
 
   async function saveBook() {
     setBookLoading(true)
-    // Store book URL as a special QnA entry
     const { data: existing } = await supabase.from('qna')
       .select('id').eq('question', '__training_book__').eq('unit_id','pikud').maybeSingle()
     if (existing) {
@@ -585,7 +578,7 @@ export function UnitManagePage() {
     setBookLoading(false); setBookModal(false)
   }
 
-  const nonAdmin = units // כולל פיקוד
+  const nonAdmin = units
 
   return (
     <div className="space-y-5">
@@ -596,7 +589,6 @@ export function UnitManagePage() {
         </button>
       </div>
 
-      {/* Training book link */}
       {bookUrl && (
         <div className="card p-4 flex items-center gap-3 bg-blue-900/10 border-blue-500/30">
           <span className="text-2xl">📚</span>
