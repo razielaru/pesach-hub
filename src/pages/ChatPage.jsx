@@ -3,6 +3,14 @@ import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import { UNITS } from '../lib/units'
 
+const CHAT_CACHE = {}
+const CHANNELS = ['כללי', 'לוגיסטיקה', 'כשרות', 'דחוף 🆘']
+const COLOR_PALETTE = ['text-blue-400','text-green-400','text-purple-400','text-orange-400','text-pink-400','text-cyan-400','text-yellow-400','text-red-400']
+const UNIT_COLORS = UNITS.reduce((acc, unit, index) => {
+  acc[unit.id] = COLOR_PALETTE[index % COLOR_PALETTE.length]
+  return acc
+}, {})
+
 export default function ChatPage() {
   const { currentUnit, isAdmin, isSenior } = useStore()
   const [channel, setChannel] = useState('כללי')
@@ -15,14 +23,24 @@ export default function ChatPage() {
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
 
-  const CHANNELS = ['כללי', 'לוגיסטיקה', 'כשרות', 'דחוף 🆘']
-
   useEffect(() => {
     if (!currentUnit) return
+    const cacheKey = `${currentUnit.id}:${channel}`
+    if (CHAT_CACHE[cacheKey]) {
+      setMessages(CHAT_CACHE[cacheKey])
+      setLoading(false)
+    }
     load()
     const sub = supabase.channel('chat_rt_' + channel)
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'chat_messages' },
-        payload => { if (payload.new.channel_name === channel) setMessages(prev => [...prev, payload.new]) })
+        payload => {
+          if (payload.new.channel_name !== channel) return
+          setMessages(prev => {
+            const next = prev.some(msg => msg.id === payload.new.id) ? prev : [...prev, payload.new]
+            CHAT_CACHE[cacheKey] = next
+            return next
+          })
+        })
       .subscribe()
     return () => supabase.removeChannel(sub)
   }, [currentUnit, channel])
@@ -31,9 +49,12 @@ export default function ChatPage() {
 
   async function load() {
     setLoading(true)
+    const cacheKey = `${currentUnit.id}:${channel}`
     const { data } = await supabase.from('chat_messages').select('*')
-      .eq('channel_name', channel).order('created_at',{ascending:true}).limit(100)
-    setMessages(data || [])
+      .eq('channel_name', channel).order('created_at',{ascending:false}).limit(60)
+    const next = [...(data || [])].reverse()
+    CHAT_CACHE[cacheKey] = next
+    setMessages(next)
     setLoading(false)
   }
 
@@ -88,7 +109,11 @@ export default function ChatPage() {
       is_broadcast: isAdmin || isSenior,
       created_at: new Date().toISOString(),
     }
-    setMessages(prev => [...prev, tempMsg])
+    setMessages(prev => {
+      const next = [...prev, tempMsg]
+      CHAT_CACHE[`${currentUnit.id}:${channel}`] = next
+      return next
+    })
     const sentText = text.trim()
     setText(''); clearImage(); setUploading(false)
 
@@ -116,10 +141,6 @@ export default function ChatPage() {
     if (d !== lastDate) { grouped.push({type:'date',label:d}); lastDate = d }
     grouped.push({type:'msg',...m})
   }
-
-  const palette = ['text-blue-400','text-green-400','text-purple-400','text-orange-400','text-pink-400','text-cyan-400','text-yellow-400','text-red-400']
-  const unitColors = {}
-  UNITS.forEach((u,i) => { unitColors[u.id] = palette[i % palette.length] })
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -168,7 +189,7 @@ export default function ChatPage() {
               )}
               <div className={`max-w-[75%] ${isMe?'items-end':'items-start'} flex flex-col gap-0.5`}>
                 {!isMe && (
-                  <span className={`text-[10px] font-bold ${unitColors[item.unit_id]||'text-text3'} ${isBroadcast?'flex items-center gap-1':''}`}>
+                  <span className={`text-[10px] font-bold ${UNIT_COLORS[item.unit_id]||'text-text3'} ${isBroadcast?'flex items-center gap-1':''}`}>
                     {item.unit_name}
                     {isBroadcast && <span className="bg-gold/20 text-gold text-[9px] px-1.5 py-0.5 rounded-full border border-gold/30">שידור</span>}
                   </span>

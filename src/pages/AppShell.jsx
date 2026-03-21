@@ -1,18 +1,19 @@
 import { useStore } from '../store/useStore'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
-import Dashboard from './Dashboard'
-import PersonnelPage from './PersonnelPage'
-import TrainingPage from './TrainingPage'
-import EquipmentPage from './EquipmentPage'
-import CleaningPage from './CleaningPage'
-import TasksPage from './TasksPage'
-import IncidentsPage from './IncidentsPage'
-import QnAPage from './QnAPage'
-import TimelinePage from './TimelinePage'
-import CommandPage from './CommandPage'
-import UnitManagePage from './UnitManagePage'
-import ChatPage from './ChatPage'
+
+const Dashboard = lazy(() => import('./Dashboard'))
+const PersonnelPage = lazy(() => import('./PersonnelPage'))
+const TrainingPage = lazy(() => import('./TrainingPage'))
+const EquipmentPage = lazy(() => import('./EquipmentPage'))
+const CleaningPage = lazy(() => import('./CleaningPage'))
+const TasksPage = lazy(() => import('./TasksPage'))
+const IncidentsPage = lazy(() => import('./IncidentsPage'))
+const QnAPage = lazy(() => import('./QnAPage'))
+const TimelinePage = lazy(() => import('./TimelinePage'))
+const CommandPage = lazy(() => import('./CommandPage'))
+const UnitManagePage = lazy(() => import('./UnitManagePage'))
+const ChatPage = lazy(() => import('./ChatPage'))
 
 const BOTTOM_NAV = [
   { id: 'dashboard', label: 'ראשי',       icon: '🏠' },
@@ -272,7 +273,13 @@ export default function AppShell() {
         </>
       )}
 
-      <main className="flex-1 overflow-y-auto pb-24 lg:pb-4"><div className="max-w-5xl mx-auto px-4 py-5">{pages[activePage] || <Dashboard />}</div></main>
+      <main className="flex-1 overflow-y-auto pb-24 lg:pb-4">
+        <div className="max-w-5xl mx-auto px-4 py-5">
+          <Suspense fallback={<div className="card p-8 text-center text-text3">טוען עמוד...</div>}>
+            {pages[activePage] || <Dashboard />}
+          </Suspense>
+        </div>
+      </main>
 
       <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-bg2/95 backdrop-blur-md border-t border-border1 z-40 pb-safe shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
         <div className="flex justify-around items-center h-16 px-1">

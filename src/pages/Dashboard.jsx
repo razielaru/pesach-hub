@@ -6,6 +6,7 @@ import { getLeafUnits, UNITS } from '../lib/units'
 import PushSetup from '../components/PushSetup'
 
 const LOGO_CACHE = {}
+const DASHBOARD_CACHE = {}
 
 export default function Dashboard() {
   const { currentUnit, activePage, setPage, isSenior, isAdmin } = useStore()
@@ -18,6 +19,17 @@ export default function Dashboard() {
   const [readiness, setReadiness] = useState(0)
   const [silentUnits, setSilentUnits] = useState([])
   const [alertsAcknowledged, setAlertsAcknowledged] = useState(false)
+
+  useEffect(() => {
+    if (!currentUnit) return
+    const cached = DASHBOARD_CACHE[currentUnit.id]
+    if (!cached) return
+    setStats(cached.stats)
+    setTasks(cached.tasks)
+    setIncidents(cached.incidents)
+    setReadiness(cached.readiness)
+    setLoading(false)
+  }, [currentUnit])
   
   const days = Math.max(0, Math.ceil((new Date('2026-04-02') - new Date()) / 86400000))
 
@@ -68,16 +80,20 @@ export default function Dashboard() {
 
       const openIncCount = openInc?.data?.length || 0
 
-      setStats({
+      const nextStats = {
         totalPersonnel: p.length,
         cleanPct,
         kashrutPct,
         totalPosts: pts.length,
         equipPct,
         missingEquip
-      })
-      setTasks(openTasks?.data || [])
-      setIncidents(openInc?.data || [])
+      }
+      const nextTasks = openTasks?.data || []
+      const nextIncidents = openInc?.data || []
+
+      setStats(nextStats)
+      setTasks(nextTasks)
+      setIncidents(nextIncidents)
 
       if (pts.length === 0 && p.length === 0 && totalNeed === 0) { setReadiness(-1); setLoading(false); return }
 
@@ -91,6 +107,12 @@ export default function Dashboard() {
       r = Math.max(0, r - (openIncCount * 10)) // קנס חריגים
       
       setReadiness(r)
+      DASHBOARD_CACHE[currentUnit.id] = {
+        stats: nextStats,
+        tasks: nextTasks,
+        incidents: nextIncidents,
+        readiness: r,
+      }
     } catch(err) { console.error(err) } 
     finally { setLoading(false) }
   }

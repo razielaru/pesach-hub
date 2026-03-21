@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 
 // Cache גלובלי — נשמר בזיכרון כל עוד הדף פתוח
 const LOGIN_CACHE = { logos: null, loaded: false }
+const LOGIN_STORAGE_KEY = 'pesach_login_logos_v1'
 
 export default function LoginPage() {
   const setUnit = useStore(s => s.setUnit)
@@ -17,6 +18,16 @@ export default function LoginPage() {
   const days = Math.max(0, Math.ceil((pesach - new Date()) / 86400000))
 
   useEffect(() => {
+    const cached = sessionStorage.getItem(LOGIN_STORAGE_KEY)
+    if (cached && !LOGIN_CACHE.logos) {
+      try {
+        const parsed = JSON.parse(cached)
+        LOGIN_CACHE.logos = parsed
+        LOGIN_CACHE.loaded = true
+        setUnitLogos(parsed)
+      } catch {}
+    }
+
     // אם כבר טענו — לא טוענים שוב
     if (LOGIN_CACHE.loaded) return
     supabase.from('units').select('id,logo_url,pin').then(({ data }) => {
@@ -25,6 +36,7 @@ export default function LoginPage() {
       data.forEach(u => { if (u.logo_url) logos[u.id] = u.logo_url })
       LOGIN_CACHE.logos = logos
       LOGIN_CACHE.loaded = true
+      sessionStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(logos))
       setUnitLogos(logos)
       data.forEach(row => {
         const u = UNITS.find(x => x.id === row.id)
@@ -106,7 +118,7 @@ export default function LoginPage() {
                       {/* Logo or icon */}
                       <div className="flex justify-center mb-2">
                         {logo
-                          ? <img src={logo} className="w-14 h-14 rounded-xl object-cover shadow-lg" alt={unit.name} />
+                          ? <img src={logo} className="w-14 h-14 rounded-xl object-cover shadow-lg" alt={unit.name} loading="lazy" decoding="async" />
                           : <span className="text-3xl">{unit.icon}</span>}
                       </div>
 
@@ -128,7 +140,7 @@ export default function LoginPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85">
           <div className="bg-bg2 border border-gold rounded-2xl p-8 w-80 text-center shadow-2xl">
             {unitLogos[pinTarget.id] && (
-              <img src={unitLogos[pinTarget.id]} className="w-16 h-16 rounded-xl object-cover mx-auto mb-3" />
+              <img src={unitLogos[pinTarget.id]} className="w-16 h-16 rounded-xl object-cover mx-auto mb-3" alt={pinTarget.name} decoding="async" />
             )}
             <div className="text-xl font-black text-gold mb-1">{pinTarget.name}</div>
             <div className="text-text3 text-sm mb-5">הכנס קוד כניסה (4 ספרות)</div>
