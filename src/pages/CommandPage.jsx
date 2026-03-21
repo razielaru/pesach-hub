@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import { UNITS, getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
-import BriefingMode, { useSmartAlerts } from './BriefingMode'
-import MapView from './MapView'
-import DutyOfficerAI from './DutyOfficerAI'
 import PushSetup from '../components/PushSetup'
+import { readPageCache, writePageCache } from '../lib/pageCache'
+import { useSmartAlerts } from './useSmartAlerts'
+
+const BriefingMode = lazy(() => import('./BriefingMode'))
+const MapView = lazy(() => import('./MapView'))
+const DutyOfficerAI = lazy(() => import('./DutyOfficerAI'))
 
 export default function CommandPage() {
   const { currentUnit, activePage, showToast } = useStore()
@@ -19,7 +22,6 @@ export default function CommandPage() {
   const [dispatchModal, setDispatchModal] = useState(false)
   const [taskForm, setTaskForm] = useState({ title:'', desc:'', priority:'high', date:'', target:'' })
   const [dispForm, setDispForm] = useState({ unit:'', item:'', qty:1, note:'' })
-  const [dispLog, setDispLog] = useState([])
   
   const [alertsAcknowledged, setAlertsAcknowledged] = useState(false)
 
@@ -27,6 +29,11 @@ export default function CommandPage() {
 
   useEffect(() => {
     if (!currentUnit || activePage !== 'command') return
+    const cached = readPageCache(`command:${currentUnit.id}`)
+    if (cached) {
+      setUnitStats(cached.unitStats || {})
+      setLoading(false)
+    }
     loadAll()
     
     const ch = supabase.channel('command_rt_' + currentUnit.id)
@@ -45,12 +52,11 @@ export default function CommandPage() {
     if (unitIds.length === 0) { setLoading(false); return }
 
     try {
-      const [persRes, equipRes, areasRes, incRes, dlRes] = await Promise.all([
+      const [persRes, equipRes, areasRes, incRes] = await Promise.all([
         supabase.from('personnel').select('id, unit_id, status, training_status').in('unit_id', unitIds),
         supabase.from('equipment').select('id, unit_id, have, need').in('unit_id', unitIds),
         supabase.from('cleaning_areas').select('id, unit_id, status').in('unit_id', unitIds),
         supabase.from('incidents').select('id, unit_id, status, title').eq('status','open').in('unit_id', unitIds),
-        supabase.from('dispatch_log').select('id, unit_id, item_name, quantity, created_at').order('created_at',{ascending:false}).limit(20),
       ])
 
       const pers  = persRes?.data  || []
@@ -58,11 +64,17 @@ export default function CommandPage() {
       const areas = areasRes?.data || []
       const incs  = incRes?.data   || []
 
+      const groupedPers = Object.groupBy ? Object.groupBy(pers, item => item.unit_id) : groupByUnit(pers)
+      const groupedEquip = Object.groupBy ? Object.groupBy(equip, item => item.unit_id) : groupByUnit(equip)
+      const groupedAreas = Object.groupBy ? Object.groupBy(areas, item => item.unit_id) : groupByUnit(areas)
+      const groupedIncidents = Object.groupBy ? Object.groupBy(incs, item => item.unit_id) : groupByUnit(incs)
+
       const stats = {}
       nonAdminUnits.forEach(u => {
-        const p = pers.filter(x => x.unit_id === u.id)
-        const e = equip.filter(x => x.unit_id === u.id)
-        const a = areas.filter(x => x.unit_id === u.id)
+        const p = groupedPers[u.id] || []
+        const e = groupedEquip[u.id] || []
+        const a = groupedAreas[u.id] || []
+        const i = groupedIncidents[u.id] || []
         
         const trainedPct = p.length ? Math.round(p.filter(x=>x.training_status==='done').length/p.length*100) : 0
         const cleanPct = a.length ? Math.round(a.filter(x=>x.status==='clean').length/a.length*100) : 0
@@ -72,7 +84,7 @@ export default function CommandPage() {
         const totalHave = e.reduce((sum, x) => sum + Math.min(x.have || 0, x.need || 0), 0)
         const equipPct = totalNeed > 0 ? Math.round((totalHave / totalNeed) * 100) : 0
 
-        const openInc = incs.filter(x => x.unit_id === u.id).length
+        const openInc = i.length
         
         const health = p.length === 0 ? 'gray'
           : openInc>0 || trainedPct<50 || (totalNeed>0 && equipPct<40) ? 'red' 
@@ -82,7 +94,7 @@ export default function CommandPage() {
         stats[u.id] = { trainedPct, equipPct, missingEquip, cleanPct, openInc, health, personnel: p.length }
       })
       setUnitStats(stats)
-      setDispLog(dlRes?.data || [])
+      writePageCache(`command:${currentUnit.id}`, { unitStats: stats })
 
     } catch(err) {
       console.error(err)
@@ -90,6 +102,14 @@ export default function CommandPage() {
       // מבטיח שהאתר לעולם לא ייתקע על מסך טעינה לבן
       setLoading(false)
     }
+  }
+
+  function groupByUnit(items) {
+    return items.reduce((acc, item) => {
+      if (!acc[item.unit_id]) acc[item.unit_id] = []
+      acc[item.unit_id].push(item)
+      return acc
+    }, {})
   }
 
   async function sendTask() {
@@ -198,7 +218,11 @@ export default function CommandPage() {
         </div>
       )}
 
-      {briefing && <BriefingMode unitStats={unitStats} onClose={() => setBriefing(false)} />}
+      {briefing && (
+        <Suspense fallback={<div className="card p-8 text-center text-text3">טוען הערכת מצב...</div>}>
+          <BriefingMode unitStats={unitStats} onClose={() => setBriefing(false)} />
+        </Suspense>
+      )}
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
@@ -284,9 +308,17 @@ export default function CommandPage() {
         </div>
       )}
 
-      {viewMode === 'map' && <MapView unitStats={unitStats} />}
+      {viewMode === 'map' && (
+        <Suspense fallback={<div className="card p-8 text-center text-text3">טוען מפה...</div>}>
+          <MapView unitStats={unitStats} />
+        </Suspense>
+      )}
 
-      {viewMode === 'ai' && <DutyOfficerAI />}
+      {viewMode === 'ai' && (
+        <Suspense fallback={<div className="card p-8 text-center text-text3">טוען קצין תורן...</div>}>
+          <DutyOfficerAI />
+        </Suspense>
+      )}
     </div>
   )
 }

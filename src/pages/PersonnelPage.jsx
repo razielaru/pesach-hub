@@ -3,12 +3,20 @@ import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
-import * as XLSX from 'xlsx'
 import { getLeafUnits, UNITS } from '../lib/units'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 const STATUS_LABEL = { available:'זמין', zoom:'זום', away:'הגב', leave:'שחרור', unavailable:'אינו זמין' }
 const STATUS_ICON  = { available:'✅', zoom:'💻', away:'⬅️', leave:'🏠', unavailable:'❌' }
 const PRIVILEGED_ROLES = ['רב', 'קצין שליטה']
+const XLSX_MODULE = { current: null }
+
+async function getXLSX() {
+  if (!XLSX_MODULE.current) {
+    XLSX_MODULE.current = await import('xlsx')
+  }
+  return XLSX_MODULE.current
+}
 
 function PersonnelTab() {
   const { currentUnit, showToast, isAdmin, isSenior } = useStore()
@@ -30,7 +38,17 @@ function PersonnelTab() {
   const leafUnits = getLeafUnits(currentUnit.id)
   const canManageMultiple = leafUnits.length > 0
 
-  useEffect(() => { if (currentUnit) { load(); loadContactCounts() } }, [currentUnit])
+  useEffect(() => {
+    if (!currentUnit) return
+    const cached = readPageCache(`personnel:${currentUnit.id}`)
+    if (cached) {
+      setPeople(cached.people || [])
+      setPosts(cached.posts || [])
+      setContactCounts(cached.contactCounts || {})
+    }
+    load()
+    loadContactCounts()
+  }, [currentUnit])
 
   async function loadContactCounts() {
     const { data } = await supabase.from('personnel_contacts').select('personnel_id')
@@ -38,6 +56,11 @@ function PersonnelTab() {
     const counts = {}
     data.forEach(r => { counts[r.personnel_id] = (counts[r.personnel_id] || 0) + 1 })
     setContactCounts(counts)
+    writePageCache(`personnel:${currentUnit.id}`, {
+      people,
+      posts,
+      contactCounts: counts,
+    })
   }
 
   async function load() {
@@ -53,6 +76,11 @@ function PersonnelTab() {
       ])
       setPeople(persRes.data || [])
       setPosts(postsRes.data || [])
+      writePageCache(`personnel:${currentUnit.id}`, {
+        people: persRes.data || [],
+        posts: postsRes.data || [],
+        contactCounts,
+      })
     } catch { setPeople([]); setPosts([]) }
   }
 
@@ -434,6 +462,7 @@ function ImportTab() {
     setFile(f); setResult(null)
     const reader = new FileReader()
     reader.onload = e => {
+      getXLSX().then(XLSX => {
       const wb = XLSX.read(e.target.result, { type:'binary' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws, { header:1 })
@@ -441,6 +470,7 @@ function ImportTab() {
       const hdrs = rows[0].map(h=>h?.toString().trim())
       setHeaders(hdrs)
       setPreview(rows.slice(1,6).map(row=>hdrs.reduce((obj,h,i)=>({...obj,[h]:row[i]}),{})))
+      })
     }
     reader.readAsBinaryString(f)
   }
@@ -450,6 +480,7 @@ function ImportTab() {
     setImporting(true); setResult(null)
     const reader = new FileReader()
     reader.onload = async e => {
+      const XLSX = await getXLSX()
       const wb = XLSX.read(e.target.result, { type:'binary' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws, { header:1 })
@@ -475,10 +506,12 @@ function ImportTab() {
   }
 
   function downloadTemplate() {
+    getXLSX().then(XLSX => {
     const ws = XLSX.utils.aoa_to_sheet([['שם','תפקיד'],['ישראל ישראלי','סגל'],['שרה כהן','מכשיר']])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'כוח אדם')
     XLSX.writeFile(wb, 'תבנית_כוח_אדם.xlsx')
+    })
   }
 
   return (

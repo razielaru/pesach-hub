@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import VideosPage from './VideosPage'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 const CATEGORIES = ['כשרות','הגעלה','ניקיון','בדיקת חמץ','הסדר','כללי']
 
@@ -34,7 +35,17 @@ export default function QnAPage() {
   const [aiProviders, setAiProviders] = useState('Gemini + GPT')
   const aiBottomRef = useRef(null)
 
-  useEffect(() => { if (currentUnit) load() }, [currentUnit])
+  useEffect(() => {
+    if (!currentUnit) return
+    const cached = readPageCache(`qna:${currentUnit.id}`)
+    if (cached) {
+      setQuestions(cached.questions || [])
+      setFaqs(cached.faqs || [])
+      setGlobalQ(cached.globalQ || [])
+      setBookUrl(cached.bookUrl || '')
+    }
+    load()
+  }, [currentUnit])
 
   async function load() {
     const [q, f, gq, book] = await Promise.all([
@@ -55,6 +66,12 @@ export default function QnAPage() {
     setFaqs(f.data || [])
     setGlobalQ(gq.data || [])
     if (book.data?.answer) setBookUrl(book.data.answer)
+    writePageCache(`qna:${currentUnit.id}`, {
+      questions: q.data || [],
+      faqs: f.data || [],
+      globalQ: gq.data || [],
+      bookUrl: book.data?.answer || '',
+    })
   }
 
   async function askQuestion() {

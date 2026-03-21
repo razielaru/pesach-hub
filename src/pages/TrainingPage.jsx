@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import { getLeafUnits, UNITS } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 const POST_TYPES = ['מפח״ט', 'מפג״ד', 'פלוגה', 'פילבוקס/הגנ״ש', 'ויקווק', 'מטבח', 'מטבחון', 'מחסן חמץ', 'כללי']
 
@@ -24,7 +25,13 @@ export default function TrainingPage() {
   const canManageMultiple = leafUnits.length > 0
 
   useEffect(() => { 
-    if (currentUnit) load() 
+    if (!currentUnit) return
+    const cached = readPageCache(`training:${currentUnit.id}`)
+    if (cached) {
+      setPeople(cached.people || [])
+      setPosts(cached.posts || [])
+    }
+    load() 
     const ch = supabase.channel('tr_rt')
       .on('postgres_changes', { event:'*', schema:'public', table:'personnel' }, () => load())
       .on('postgres_changes', { event:'*', schema:'public', table:'unit_posts' }, () => load())
@@ -37,14 +44,15 @@ export default function TrainingPage() {
       const ids = leafUnits.length > 0 ? leafUnits.map(u=>u.id) : [currentUnit.id]
       const [persRes, postsRes] = await Promise.all([
         ids.length===1
-          ? supabase.from('personnel').select('*').eq('unit_id',ids[0])
-          : supabase.from('personnel').select('*').in('unit_id',ids),
+          ? supabase.from('personnel').select('id,name,post_id,unit_id').eq('unit_id',ids[0])
+          : supabase.from('personnel').select('id,name,post_id,unit_id').in('unit_id',ids),
         ids.length===1
-          ? supabase.from('unit_posts').select('*').eq('unit_id',ids[0]).order('name')
-          : supabase.from('unit_posts').select('*').in('unit_id',ids).order('name'),
+          ? supabase.from('unit_posts').select('id,unit_id,name,type,parent_id,status').eq('unit_id',ids[0]).order('name')
+          : supabase.from('unit_posts').select('id,unit_id,name,type,parent_id,status').in('unit_id',ids).order('name'),
       ])
       setPeople(persRes.data||[])
       setPosts(postsRes.data||[])
+      writePageCache(`training:${currentUnit.id}`, { people: persRes.data || [], posts: postsRes.data || [] })
     } catch { setPeople([]); setPosts([]) }
   }
 

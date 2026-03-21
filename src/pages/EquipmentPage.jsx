@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore'
 import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
 import KpiCard from '../components/ui/KpiCard'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 export default function EquipmentPage() {
   const { currentUnit, showToast, isAdmin, isSenior } = useStore()
@@ -15,7 +16,15 @@ export default function EquipmentPage() {
   const [dispForm, setDispForm] = useState({ item:'', qty:1, note:'' })
   const [dispModal, setDispModal] = useState(false)
 
-  useEffect(() => { if (currentUnit) load() }, [currentUnit])
+  useEffect(() => {
+    if (!currentUnit) return
+    const cached = readPageCache(`equipment:${currentUnit.id}`)
+    if (cached) {
+      setItems(cached.items || [])
+      setDispLog(cached.dispLog || [])
+    }
+    load()
+  }, [currentUnit])
 
   async function load() {
     const subs = getLeafUnits(currentUnit.id)
@@ -35,6 +44,7 @@ export default function EquipmentPage() {
     const [eq, dl] = await Promise.all([eqQuery, dlQuery])
     setItems(eq.data || [])
     setDispLog(dl.data || [])
+    writePageCache(`equipment:${currentUnit.id}`, { items: eq.data || [], dispLog: dl.data || [] })
   }
 
   async function save() {

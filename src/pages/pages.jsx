@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 // ══ CLEANING ══
 export function CleaningPage() {
@@ -152,7 +153,12 @@ export function TasksPage() {
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState({ title:'', description:'', priority:'normal', due_date:'' })
 
-  useEffect(() => { if (currentUnit) load() }, [currentUnit])
+  useEffect(() => {
+    if (!currentUnit) return
+    const cached = readPageCache(`tasks:${currentUnit.id}`)
+    if (cached) setTasks(cached)
+    load()
+  }, [currentUnit])
   async function load() {
     const subs = getLeafUnits(currentUnit.id)
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
@@ -161,6 +167,7 @@ export function TasksPage() {
       : supabase.from('tasks').select('*').in('unit_id', ids)
     const { data } = await query.order('created_at', {ascending: false})
     setTasks(data || [])
+    writePageCache(`tasks:${currentUnit.id}`, data || [])
   }
   async function save() {
     if (!form.title) return
@@ -257,7 +264,15 @@ export function TimelinePage() {
   }
   const CATEGORIES = Object.keys(CATEGORIES_COLOR)
 
-  useEffect(() => { if (currentUnit) load() }, [currentUnit])
+  useEffect(() => {
+    if (!currentUnit) return
+    const cached = readPageCache(`timeline:${currentUnit.id}`)
+    if (cached) {
+      setMilestones(cached.milestones || [])
+      setStatuses(cached.statuses || {})
+    }
+    load()
+  }, [currentUnit])
 
   async function load() {
     const [ms, st] = await Promise.all([
@@ -268,6 +283,10 @@ export function TimelinePage() {
     const map = {}
     ;(st.data||[]).forEach(s => { map[s.milestone_id] = s })
     setStatuses(map)
+    writePageCache(`timeline:${currentUnit.id}`, {
+      milestones: ms.data || [],
+      statuses: map,
+    })
   }
 
   async function addMilestone() {

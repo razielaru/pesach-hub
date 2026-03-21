@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import { getLeafUnits } from '../lib/units'
 import Modal, { ModalButtons } from '../components/ui/Modal'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 const SEV = { critical:'badge-red', high:'badge-red', medium:'badge-orange', low:'badge-blue' }
 const SEV_LABEL = { critical:'🔴 קריטי', high:'🟠 גבוה', medium:'🟡 בינוני', low:'🔵 נמוך' }
@@ -25,6 +26,8 @@ export default function IncidentsPage() {
 
   useEffect(() => {
     if (!currentUnit) return
+    const cached = readPageCache(`incidents:${currentUnit.id}`)
+    if (cached) setIncidents(cached)
     load()
     const ch = supabase.channel('inc_page')
       .on('postgres_changes', { event:'*', schema:'public', table:'incidents' }, () => load())
@@ -40,6 +43,7 @@ export default function IncidentsPage() {
       : supabase.from('incidents').select('*').in('unit_id', ids)
     const { data } = await query.order('created_at', { ascending: false })
     setIncidents(data || [])
+    writePageCache(`incidents:${currentUnit.id}`, data || [])
   }
 
   function handleImage(e) {

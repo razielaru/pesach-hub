@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import { getSubordinateUnits } from '../lib/units'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 const QUICK_OPS = [
   'איזו יחידה הכי לא מוכנה לפסח?',
@@ -25,7 +26,10 @@ export default function DutyOfficerAI() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   useEffect(() => {
-    if (currentUnit) loadUnitData()
+    if (!currentUnit) return
+    const cached = readPageCache(`duty-ai:${currentUnit.id}`)
+    if (cached) setUnitData(cached)
+    loadUnitData()
   }, [currentUnit])
 
   async function loadUnitData() {
@@ -36,21 +40,27 @@ export default function DutyOfficerAI() {
       const inF = q => ids.length === 1 ? q.eq('unit_id', ids[0]) : q.in('unit_id', ids)
 
       const [pers, equip, areas, tasks, incs] = await Promise.all([
-        inF(supabase.from('personnel').select('unit_id,name,training_status,status')),
+        inF(supabase.from('personnel').select('unit_id,training_status')),
         inF(supabase.from('equipment').select('unit_id,name,have,need')),
-        inF(supabase.from('cleaning_areas').select('unit_id,name,status')),
-        inF(supabase.from('tasks').select('unit_id,title,status,priority')),
+        inF(supabase.from('cleaning_areas').select('unit_id,status')),
+        inF(supabase.from('tasks').select('unit_id,status')),
         inF(supabase.from('incidents').select('unit_id,title,severity,status')),
       ])
+
+      const persByUnit = groupByUnit(pers.data || [])
+      const equipByUnit = groupByUnit(equip.data || [])
+      const areasByUnit = groupByUnit(areas.data || [])
+      const tasksByUnit = groupByUnit(tasks.data || [])
+      const incsByUnit = groupByUnit(incs.data || [])
 
       // סיכום לפי יחידה
       const summary = {}
       for (const u of subs.length > 0 ? subs : [currentUnit]) {
-        const p  = (pers.data||[]).filter(x=>x.unit_id===u.id)
-        const e  = (equip.data||[]).filter(x=>x.unit_id===u.id)
-        const a  = (areas.data||[]).filter(x=>x.unit_id===u.id)
-        const t  = (tasks.data||[]).filter(x=>x.unit_id===u.id)
-        const i  = (incs.data||[]).filter(x=>x.unit_id===u.id && x.status==='open')
+        const p  = persByUnit[u.id] || []
+        const e  = equipByUnit[u.id] || []
+        const a  = areasByUnit[u.id] || []
+        const t  = tasksByUnit[u.id] || []
+        const i  = (incsByUnit[u.id] || []).filter(x=>x.status==='open')
         summary[u.name] = {
           כוח_אדם: p.length,
           מוכשרים: p.filter(x=>x.training_status==='done').length,
@@ -63,10 +73,19 @@ export default function DutyOfficerAI() {
         }
       }
       setUnitData(summary)
+      writePageCache(`duty-ai:${currentUnit.id}`, summary)
     } catch(e) {
       console.error(e)
     }
     setLoadingData(false)
+  }
+
+  function groupByUnit(items) {
+    return items.reduce((acc, item) => {
+      if (!acc[item.unit_id]) acc[item.unit_id] = []
+      acc[item.unit_id].push(item)
+      return acc
+    }, {})
   }
 
   async function ask(q) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useStore } from '../store/useStore'
 import { getLeafUnits } from '../lib/units'
+import { readPageCache, writePageCache } from '../lib/pageCache'
 
 const COMMON_AREAS = ['מטבח', 'מטבחון', 'מטבחון מח״ט', 'פינת קפה', 'וויקוק', 'טרקלין', 'חלביה', 'פתיה', 'כוורת']
 
@@ -18,7 +19,14 @@ export default function CleaningPage() {
   const [expanded, setExpanded] = useState({})
 
   useEffect(() => { 
-    if (currentUnit) load() 
+    if (!currentUnit) return
+    const cached = readPageCache(`cleaning:${currentUnit.id}`)
+    if (cached) {
+      setAreas(cached.areas || [])
+      setPosts(cached.posts || [])
+      setPeople(cached.people || [])
+    }
+    load() 
     const ch = supabase.channel('clean_rt')
       .on('postgres_changes', { event:'*', schema:'public', table:'cleaning_areas' }, () => load())
       .on('postgres_changes', { event:'*', schema:'public', table:'unit_posts' }, () => load())
@@ -31,12 +39,17 @@ export default function CleaningPage() {
     const ids = subs.length > 0 ? subs.map(u => u.id) : [currentUnit.id]
 
     const [areasRes, postsRes, persRes] = await Promise.all([
-      ids.length === 1 ? supabase.from('cleaning_areas').select('*').eq('unit_id', ids[0]).order('name') : supabase.from('cleaning_areas').select('*').in('unit_id', ids).order('name'),
-      ids.length === 1 ? supabase.from('unit_posts').select('*').eq('unit_id', ids[0]).order('name') : supabase.from('unit_posts').select('*').in('unit_id', ids).order('name'),
+      ids.length === 1 ? supabase.from('cleaning_areas').select('id,unit_id,post_id,name,status,assigned_to').eq('unit_id', ids[0]).order('name') : supabase.from('cleaning_areas').select('id,unit_id,post_id,name,status,assigned_to').in('unit_id', ids).order('name'),
+      ids.length === 1 ? supabase.from('unit_posts').select('id,unit_id,name,type').eq('unit_id', ids[0]).order('name') : supabase.from('unit_posts').select('id,unit_id,name,type').in('unit_id', ids).order('name'),
       ids.length === 1 ? supabase.from('personnel').select('id, name, role, unit_id').eq('unit_id', ids[0]).order('name') : supabase.from('personnel').select('id, name, role, unit_id').in('unit_id', ids).order('name')
     ])
     
     setAreas(areasRes.data || []); setPosts(postsRes.data || []); setPeople(persRes.data || [])
+    writePageCache(`cleaning:${currentUnit.id}`, {
+      areas: areasRes.data || [],
+      posts: postsRes.data || [],
+      people: persRes.data || [],
+    })
   }
 
   async function addArea(postId, areaName) {
