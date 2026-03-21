@@ -81,13 +81,16 @@ export default function IncidentsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          task: 'classify',
+          knowledgeMode: 'none',
+          useDualAI: false,
           messages: [{ role: 'user', content:
             `סווג את החריג הבא לפי דחיפות. ענה במילה אחת בלבד: critical / high / medium / low\n\nכותרת: ${form.title}\nתיאור: ${form.description}` }],
           systemPrompt: 'אתה מסווג חריגים צבאיים. ענה במילה אחת בלבד מתוך: critical, high, medium, low. ללא פיסוק.'
         })
       })
       const data = await res.json()
-      const sev = data.text?.trim().toLowerCase().replace(/[^a-z]/g,'')
+      const sev = data?.text?.trim().toLowerCase().replace(/[^a-z]/g,'')
       if (['critical','high','medium','low'].includes(sev)) {
         setForm(f => ({ ...f, severity: sev }))
         showToast(`AI סיווג: ${sev} ✅`, 'green')

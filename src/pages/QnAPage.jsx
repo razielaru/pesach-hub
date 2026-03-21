@@ -31,6 +31,7 @@ export default function QnAPage() {
   const [aiInput, setAiInput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
+  const [aiProviders, setAiProviders] = useState('Gemini + GPT')
   const aiBottomRef = useRef(null)
 
   useEffect(() => { if (currentUnit) load() }, [currentUnit])
@@ -102,39 +103,26 @@ export default function QnAPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newMsgs,
-          systemPrompt: 'אתה רב צבאי מומחה בהלכות פסח. ענה בעברית, בצורה קצרה וברורה לחיילים. התבסס על ספר ההכשרות הצבאי.'
+          task: 'chat',
+          knowledgeMode: 'auto',
+          useDualAI: true,
+          systemPrompt: 'אתה רב צבאי מומחה בהלכות פסח ובמענה לביקורת רבנות. ענה בעברית ברורה, מלאה ומעשית. התבסס על ספר ההכשרות הצבאי ועל שאלון ביקורת אכ"א כאשר הוא רלוונטי.'
         })
       })
 
-      if (!res.ok) throw new Error('שגיאה בתקשורת מול השרת')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'שגיאה בתקשורת מול השרת')
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder('utf-8')
-      let aiReply = ''
+      const aiReply = (data?.text || '').trim() || 'לא התקבלה תשובה'
+      const providers = (data?.meta?.providers || []).map(p => p === 'openai' ? 'GPT' : 'Gemini')
+      if (providers.length) setAiProviders(providers.join(' + '))
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ') && !line.includes('[DONE]')) {
-            try {
-              const data = JSON.parse(line.replace('data: ', ''))
-              const textPart = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-              aiReply += textPart
-              setAiMessages(prev => {
-                const updated = [...prev]
-                updated[updated.length - 1].content = aiReply
-                return updated
-              })
-              aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-            } catch(e) {} 
-          }
-        }
-      }
+      setAiMessages(prev => {
+        const updated = [...prev]
+        updated[updated.length - 1].content = aiReply
+        return updated
+      })
+      aiBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     } catch (e) {
       setAiError('שגיאה: ' + e.message)
     }
@@ -163,7 +151,7 @@ export default function QnAPage() {
         {[
           ['questions', `❓ שאלות שלי (${myPending.length})`],
           ['faq', '📚 מאגר הלכה (FAQ)'],
-          ['ai', '🤖 רב AI'],
+          ['ai', '🤖 AI משולב'],
           ['videos', '🎥 סרטוני הכשרה'],
           ['book', '📚 ספר הכשרות'],
           ...(isAdmin || isSenior ? [['all', `📋 כל השאלות (${globalQ.length})`]] : []),
@@ -200,8 +188,8 @@ export default function QnAPage() {
       {tab === 'ai' && (
         <div className="space-y-3">
           <div className="card p-4 bg-yellow-900/10 border-yellow-500/20">
-            <div className="font-bold text-sm mb-1">🤖 רב AI — שאלות הלכתיות לפסח</div>
-            <div className="text-text3 text-xs">מבוסס בינה מלאכותית · לא מחליף פסיקת רב · לשאלות מורכבות פנה לרב יחידה</div>
+            <div className="font-bold text-sm mb-1">🤖 רב AI משולב — {aiProviders}</div>
+            <div className="text-text3 text-xs">מבוסס ספר ההכשרות + שאלון ביקורת אכ"א · שני מנועים עובדים יחד על אותה תשובה · לא מחליף פסיקת רב</div>
           </div>
           
           <div className="flex gap-2 flex-wrap">
@@ -211,18 +199,18 @@ export default function QnAPage() {
           </div>
           
           <div className="card p-4 space-y-3 min-h-[200px] max-h-[500px] overflow-y-auto">
-            {aiMessages.length === 0 && <div className="text-center text-text3 py-8">שאל שאלה הלכתית...</div>}
+            {aiMessages.length === 0 && <div className="text-center text-text3 py-8">שאל על פסח, כשרות או ביקורת אכ"א...</div>}
             {aiMessages.map((m, i) => (
               <div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
                 <div className={`max-w-[80%] rounded-xl px-4 py-2 text-sm ${m.role==='user' ? 'bg-gold/20 border border-gold/30 text-text1' : 'bg-bg3 border border-border1 text-text1'}`}>
-                  {m.role==='assistant' && <div className="text-xs text-yellow-400 font-bold mb-1">🤖 רב AI</div>}
+                  {m.role==='assistant' && <div className="text-xs text-yellow-400 font-bold mb-1">🤖 רב AI משולב</div>}
                   <div style={{whiteSpace:'pre-wrap'}}>{m.content}</div>
                 </div>
               </div>
             ))}
             {aiLoading && aiMessages[aiMessages.length - 1]?.content === '' && (
               <div className="flex justify-start">
-                <div className="bg-bg3 border border-border1 rounded-xl px-4 py-2 text-sm text-text3">✍️ מעיין בספר ההכשרות ומנסח פסיקה...</div>
+                <div className="bg-bg3 border border-border1 rounded-xl px-4 py-2 text-sm text-text3">✍️ Gemini ו-GPT מעבדים את השאלה ומרכיבים תשובה מלאה...</div>
               </div>
             )}
             {aiError && <div className="text-red-400 text-xs bg-red-900/20 border border-red-500/30 rounded-lg p-3">⚠️ {aiError}</div>}
@@ -230,7 +218,7 @@ export default function QnAPage() {
           </div>
           
           <div className="flex gap-2">
-            <textarea className="form-input flex-1 resize-none h-12" placeholder="שאל שאלה הלכתית... (Enter לשליחה)" value={aiInput} onChange={e => setAiInput(e.target.value)} onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); askAI(aiInput) } }} />
+            <textarea className="form-input flex-1 resize-none h-12" placeholder="שאל על פסח, כשרות או ביקורת... (Enter לשליחה)" value={aiInput} onChange={e => setAiInput(e.target.value)} onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); askAI(aiInput) } }} />
             <button className="btn btn-gold" onClick={() => askAI(aiInput)} disabled={aiLoading}>{aiLoading ? '⏳' : '📤'}</button>
           </div>
           {aiMessages.length > 0 && <button className="text-xs text-text3 hover:text-text2" onClick={() => { setAiMessages([]); setAiError('') }}>🗑 נקה שיחה</button>}
