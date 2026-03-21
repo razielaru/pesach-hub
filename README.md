@@ -22,6 +22,10 @@
 ```
 VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key_here
+GEMINI_API_KEY=your_gemini_key_here
+OPENAI_API_KEY=your_openai_key_here
+# אופציונלי:
+# OPENAI_MODEL=gpt-5-mini
 ```
 
 הערכים נמצאים ב-Supabase → Settings → API
@@ -48,6 +52,9 @@ git push -u origin main
 4. הוסף Environment Variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
+   - `GEMINI_API_KEY`
+   - `OPENAI_API_KEY`
+   - אופציונלי: `OPENAI_MODEL`
 5. לחץ **Deploy** ✅
 
 ---
